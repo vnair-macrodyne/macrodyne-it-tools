@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Macrodyne IT Device Survey</title>
+
+<!-- MSAL.js from CDN -->
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+
+<style>
+  /* ── Design: clean industrial / corporate. Macrodyne blue as the
+     single accent colour. Monospace for device identifiers.
+     Readable on any device, works in Outlook-opened browser. ── */
+
+  :root {
+    --blue:       #0078D4;
+    --blue-dark:  #005a9e;
+    --blue-light: #e8f2fc;
+    --green:      #107c10;
+    --green-bg:   #e6f4e6;
+    --red:        #c30000;
+    --red-bg:     #fde7e7;
+    --amber:      #b46a00;
+    --amber-bg:   #fff4ce;
+    --grey-1:     #f5f5f5;
+    --grey-2:     #e0e0e0;
+    --grey-3:     #767676;
+    --text:       #1a1a1a;
+    --radius:     6px;
+    --shadow:     0 2px 8px rgba(0,0,0,0.10);
+    --font-body:  'Segoe UI', system-ui, sans-serif;
+    --font-mono:  'Cascadia Code', 'Consolas', monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-body);
+    font-size: 15px;
+    color: var(--text);
+    background: var(--grey-1);
+    min-height: 100vh;
+    padding: 0 0 60px;
+  }
+
+  /* ── Header ── */
+  .site-header {
+    background: var(--blue);
+    color: white;
+    padding: 18px 24px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  }
+  .site-header .logo {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  .site-header .subtitle {
+    font-size: 13px;
+    opacity: 0.85;
+    margin-top: 2px;
+  }
+
+  /* ── Container ── */
+  .container {
+    max-width: 680px;
+    margin: 32px auto;
+    padding: 0 16px;
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 28px;
+    margin-bottom: 20px;
+  }
+  .card-title {
+    font-size: 17px;
+    font-weight: 600;
+    margin-bottom: 18px;
+    color: var(--blue-dark);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-title .badge {
+    background: var(--blue);
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 20px;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── Auth / loading states ── */
+  #auth-section {
+    text-align: center;
+    padding: 60px 24px;
+  }
+  #auth-section h2 {
+    font-size: 22px;
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+  #auth-section p {
+    color: var(--grey-3);
+    margin-bottom: 24px;
+    font-size: 14px;
+  }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--grey-2);
+    border-top-color: var(--blue);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Greeting banner ── */
+  .greeting {
+    background: var(--blue-light);
+    border-left: 4px solid var(--blue);
+    padding: 16px 20px;
+    border-radius: 0 var(--radius) var(--radius) 0;
+    margin-bottom: 20px;
+  }
+  .greeting .name {
+    font-size: 18px;
+    font-weight: 600;
+  }
+  .greeting .sub {
+    font-size: 13px;
+    color: var(--grey-3);
+    margin-top: 3px;
+  }
+
+  /* ── Device card ── */
+  .device-card {
+    background: white;
+    border: 2px solid var(--grey-2);
+    border-radius: var(--radius);
+    margin-bottom: 16px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .device-card.active { border-color: var(--blue); }
+  .device-card.resolved { border-color: var(--green); }
+  .device-card.flagged { border-color: var(--amber); }
+
+  .device-header {
+    background: var(--grey-1);
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--grey-2);
+  }
+  .device-icon {
+    width: 36px; height: 36px;
+    background: var(--blue);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 18px; flex-shrink: 0;
+  }
+  .device-identifiers { flex: 1; }
+  .device-hostname {
+    font-family: var(--font-mono);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--blue-dark);
+  }
+  .device-assetid {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--grey-3);
+    margin-top: 2px;
+  }
+  .device-num {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--grey-3);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .device-body { padding: 18px; }
+
+  /* ── Questions ── */
+  .question { margin-bottom: 20px; }
+  .question:last-child { margin-bottom: 0; }
+
+  .q-label {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    display: block;
+  }
+  .q-helper {
+    font-size: 12px;
+    color: var(--grey-3);
+    margin-top: -6px;
+    margin-bottom: 10px;
+  }
+
+  /* Radio / checkbox groups */
+  .option-group { display: flex; flex-direction: column; gap: 8px; }
+  .option-group.inline { flex-direction: row; flex-wrap: wrap; gap: 8px; }
+
+  .option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    border: 1.5px solid var(--grey-2);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    user-select: none;
+  }
+  .option:hover { border-color: var(--blue); background: var(--blue-light); }
+  .option input { margin-top: 1px; flex-shrink: 0; accent-color: var(--blue); }
+  .option.selected {
+    border-color: var(--blue);
+    background: var(--blue-light);
+  }
+  .option.checked-issue {
+    border-color: var(--amber);
+    background: var(--amber-bg);
+  }
+
+  /* Text inputs */
+  .text-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1.5px solid var(--grey-2);
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-family: var(--font-body);
+    transition: border-color 0.15s;
+    outline: none;
+  }
+  .text-input:focus { border-color: var(--blue); }
+
+  /* Sub-section (revealed by branching) */
+  .sub-section {
+    display: none;
+    margin-top: 16px;
+    padding: 16px;
+    background: var(--grey-1);
+    border-radius: var(--radius);
+    border-left: 3px solid var(--grey-2);
+  }
+  .sub-section.visible { display: block; }
+  .sub-section.issue-section { border-left-color: var(--amber); }
+  .sub-section.flag-section  { border-left-color: var(--red); }
+  .sub-section.recon-section { border-left-color: var(--blue); }
+
+  /* Issue checkbox group */
+  .issue-checks { display: flex; flex-direction: column; gap: 6px; }
+  .issue-check {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px;
+    border: 1.5px solid var(--grey-2);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .issue-check:hover { border-color: var(--amber); background: var(--amber-bg); }
+  .issue-check input { accent-color: var(--amber); }
+
+  /* Status pill on resolved device */
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .pill-ok     { background: var(--green-bg);  color: var(--green); }
+  .pill-issue  { background: var(--amber-bg);  color: var(--amber); }
+  .pill-flag   { background: var(--red-bg);    color: var(--red);   }
+
+  /* ── Person-level questions ── */
+  .section-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--blue-dark);
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--grey-2);
+  }
+
+  /* ── Submit area ── */
+  .submit-area {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 24px 28px;
+    margin-bottom: 20px;
+  }
+  .submit-area .note {
+    font-size: 12px;
+    color: var(--grey-3);
+    margin-bottom: 16px;
+    line-height: 1.5;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 28px;
+    border-radius: var(--radius);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: background 0.15s, transform 0.1s;
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn-primary { background: var(--blue); color: white; }
+  .btn-primary:hover { background: var(--blue-dark); }
+  .btn-primary:disabled {
+    background: var(--grey-2);
+    color: var(--grey-3);
+    cursor: not-allowed;
+  }
+  .btn-sign-in {
+    background: white;
+    color: var(--blue);
+    border: 2px solid var(--blue);
+    padding: 12px 32px;
+    font-size: 16px;
+  }
+  .btn-sign-in:hover { background: var(--blue-light); }
+
+  /* ── Success / error states ── */
+  #success-section, #error-section {
+    display: none;
+    text-align: center;
+    padding: 60px 24px;
+  }
+  .success-icon { font-size: 64px; margin-bottom: 16px; }
+  #success-section h2 { color: var(--green); margin-bottom: 10px; }
+  #error-section h2   { color: var(--red);   margin-bottom: 10px; }
+  #success-section p, #error-section p {
+    color: var(--grey-3);
+    font-size: 14px;
+    max-width: 400px;
+    margin: 0 auto;
+    line-height: 1.6;
+  }
+
+  /* ── Validation ── */
+  .field-error {
+    color: var(--red);
+    font-size: 12px;
+    margin-top: 5px;
+    display: none;
+  }
+  .field-error.visible { display: block; }
+
+  /* ── Progress bar ── */
+  .progress-bar {
+    height: 4px;
+    background: var(--grey-2);
+    border-radius: 2px;
+    margin-bottom: 20px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--blue);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+  }
+
+  /* ── Unknown devices section ── */
+  .add-device-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: white;
+    border: 1.5px dashed var(--blue);
+    border-radius: var(--radius);
+    color: var(--blue);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    width: 100%;
+    transition: background 0.15s;
+    margin-top: 8px;
+  }
+  .add-device-btn:hover { background: var(--blue-light); }
+
+  .unknown-device-entry {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    align-items: center;
+  }
+  .unknown-device-entry input { flex: 1; }
+  .remove-btn {
+    background: none;
+    border: none;
+    color: var(--red);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 4px 8px;
+    border-radius: 4px;
+  }
+  .remove-btn:hover { background: var(--red-bg); }
+
+  @media (max-width: 480px) {
+    .container { padding: 0 10px; }
+    .card { padding: 20px 16px; }
+    .device-body { padding: 14px; }
+    .option.inline { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── CONFIGURATION — fill these in ── -->
+<script>
+const CONFIG = {
+  tenantId:     "4c9a50a1-c27f-4044-8025-b59b5b804d16",    // e.g. "4c9a50a1-c27f-4044-8025-b59b5b804d16"
+  clientId:     "6bfa3adb-1f7d-44e4-8cb9-38be4a107549",    // Azure app registration client ID
+  redirectUri: "https://happy-sand-0c88c6110.7.azurestaticapps.net/survey.html", // auto-derives from current URL
+  flowUrl:      "https://default4c9a50a1c27f40448025b59b5b804d.16.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/09b2cb6cdc164253a30bbad111d17c7c/triggers/manual/paths/invoke?api-version=1", // PA HTTP trigger
+  // Graph endpoint to look up employee number from UPN
+  spSite:       "https://macrodyne.sharepoint.com/sites/CorporateReferenceData",
+  empMasterGuid:"67e4fcf6-e4fc-44f6-8c15-4c91e42e7cc7"
+};
+</script>
+
+<!-- ── HEADER ── -->
+<header class="site-header">
+  <div>
+    <div class="logo">Macrodyne Technologies</div>
+    <div class="subtitle">IT Device Survey</div>
+  </div>
+</header>
+
+<!-- ── MAIN ── -->
+<main class="container" id="main-container">
+
+  <!-- AUTH STATE -->
+  <div id="auth-section" class="card">
+    <div class="spinner"></div>
+    <h2>Signing you in…</h2>
+    <p>Please wait while we verify your identity with your
+       Macrodyne Microsoft account.</p>
+    <button class="btn btn-sign-in" id="sign-in-btn"
+            style="display:none;" onclick="signIn()">
+      Sign in with Microsoft
+    </button>
+  </div>
+
+  <!-- SURVEY FORM (hidden until auth) -->
+  <div id="survey-section" style="display:none;">
+
+    <div class="greeting" id="greeting-banner">
+      <div class="name" id="greeting-name">Hi there,</div>
+      <div class="sub">Please review the devices we have on
+           record for you and answer a few quick questions.
+           This takes under 3 minutes.</div>
+    </div>
+
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress-fill"
+           style="width:0%"></div>
+    </div>
+
+    <!-- DEVICE CARDS (injected by JS) -->
+    <div id="device-cards-container"></div>
+
+    <!-- UNKNOWN DEVICES -->
+    <div class="card">
+      <div class="section-title">
+        Any other Macrodyne devices?
+      </div>
+      <p style="font-size:13px;color:var(--grey-3);margin-bottom:12px;">
+        If you use a Macrodyne device that isn't listed above,
+        please add it here. Find the device name under
+        <strong>Settings → System → About → Device name</strong>.
+      </p>
+      <div id="unknown-devices-list"></div>
+      <button class="add-device-btn" onclick="addUnknownDevice()">
+        + Add a device not listed above
+      </button>
+    </div>
+
+    <!-- PERSON-LEVEL QUESTIONS -->
+    <div class="card">
+      <div class="section-title">A few more questions</div>
+
+      <!-- Work arrangement -->
+      <div class="question">
+        <label class="q-label">
+          Where do you primarily work?
+          <span style="color:var(--red)">*</span>
+        </label>
+        <div class="option-group" id="work-arrangement-group">
+          <label class="option" onclick="selectOption(this,'work_arrangement','office')">
+            <input type="radio" name="work_arrangement" value="office">
+            <span>Macrodyne office</span>
+          </label>
+          <label class="option" onclick="selectOption(this,'work_arrangement','home')">
+            <input type="radio" name="work_arrangement" value="home">
+            <span>Home</span>
+          </label>
+          <label class="option" onclick="selectOption(this,'work_arrangement','field')">
+            <input type="radio" name="work_arrangement" value="field">
+            <span>Field</span>
+          </label>
+          <label class="option" onclick="selectOption(this,'work_arrangement','split')">
+            <input type="radio" name="work_arrangement" value="split">
+            <span>Split between office and home</span>
+          </label>
+        </div>
+        <div class="field-error" id="err-work-arrangement">
+          Please select where you primarily work.
+        </div>
+      </div>
+
+      <!-- Comments -->
+      <div class="question">
+        <label class="q-label">
+          Anything else IT should know about your
+          device situation? <em style="font-weight:400;
+          color:var(--grey-3)">(optional)</em>
+        </label>
+        <textarea class="text-input" id="comments" rows="3"
+          placeholder="e.g. I've been using my personal laptop because I haven't received a company device yet…"
+          style="resize:vertical;"></textarea>
+      </div>
+    </div>
+
+    <!-- SUBMIT -->
+    <div class="submit-area">
+      <p class="note">
+        By submitting, you confirm your responses are accurate
+        to the best of your knowledge. IT may follow up if any
+        device records need to be updated.
+      </p>
+      <button class="btn btn-primary" id="submit-btn"
+              onclick="submitSurvey()">
+        Submit Survey
+      </button>
+    </div>
+
+  </div><!-- /survey-section -->
+
+  <!-- SUCCESS -->
+  <div id="success-section" class="card">
+    <div class="success-icon">✅</div>
+    <h2>Thank you!</h2>
+    <p>Your responses have been recorded. IT will review any
+       flagged items and follow up if needed. You can close
+       this page.</p>
+  </div>
+
+  <!-- ERROR -->
+  <div id="error-section" class="card">
+    <div class="success-icon">⚠️</div>
+    <h2>Something went wrong</h2>
+    <p id="error-message">There was a problem submitting your
+       responses. Please reply to the IT survey email and
+       Vijay Nair will assist you directly.</p>
+  </div>
+
+</main><!-- /container -->
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// MSAL SETUP
+// ═══════════════════════════════════════════════════════════
+
+const msalConfig = {
+  auth: {
+    clientId:   CONFIG.clientId,
+    authority:  `https://login.microsoftonline.com/${CONFIG.tenantId}`,
+    redirectUri: CONFIG.redirectUri
+  },
+  cache: { cacheLocation: "sessionStorage" }
+};
+
+const msalInstance = new msal.PublicClientApplication(msalConfig);
+const loginScopes  = ["User.Read", "Sites.Read.All"];
+
+// State
+let prefillTarget = {};   // who the email was sent to: { name, empNo }
+let currentUser   = {};   // who's actually filling in: { name, upn, empNo }
+let deviceData    = [];   // from URL params
+let deviceAnswers = [];   // per-device form answers
+let unknownDevices= [];   // additional devices not in the list
+
+// ═══════════════════════════════════════════════════════════
+// INIT — run on page load
+// ═══════════════════════════════════════════════════════════
+
+async function init() {
+  // ─────────────────────────────────────────────────────────
+  // PHASE 1: PREFILL — runs unconditionally, before any auth.
+  // The URL params tell us who this email was sent to and what
+  // devices are recorded against them. We render this immediately
+  // so the user sees the form, with their prefilled data, within
+  // a second of page load. Auth is a separate concern handled in
+  // Phase 2.
+  // ─────────────────────────────────────────────────────────
+  const parsed = parseUrlParams();
+  prefillTarget = parsed.target;
+  deviceData    = parsed.devices;
+
+  // Initialise per-device answer store
+  deviceAnswers = deviceData.map(d => ({
+    hostname:      d.hostname,
+    assetId:       d.assetId,
+    usage:         null,
+    purpose:       null,
+    purposeOther:  "",
+    deviceOk:      null,
+    issues:        [],
+    issueOther:    "",
+    prodLoss:      null,
+    noReason:      null,
+    noReasonOther: "",
+    reportedName:  ""
+  }));
+
+  // Render the form immediately with the prefill target's name
+  const targetFirstName = (prefillTarget.name || "there").split(' ')[0];
+  document.getElementById('greeting-name').textContent = `Hi ${targetFirstName},`;
+  document.getElementById('auth-section').style.display  = "none";
+  document.getElementById('survey-section').style.display = "block";
+  renderDeviceCards();
+  updateProgress();
+
+  // ─────────────────────────────────────────────────────────
+  // PHASE 2: AUTH — captures the signed-in user's identity
+  // for the submit payload. Form is already usable; auth runs
+  // in the background. If auth fails or the user is on a cold
+  // machine, the sign-in panel shows above the form (not
+  // replacing it).
+  // ─────────────────────────────────────────────────────────
+  try {
+    await msalInstance.handleRedirectPromise();
+    const accounts = msalInstance.getAllAccounts();
+
+    if (accounts.length === 0) {
+      // Cold machine — surface a sign-in panel above the form,
+      // but the form is already visible and usable.
+      showAuthPrompt();
+      return;
+    }
+
+    const account = accounts[0];
+    const tokenResponse = await msalInstance.acquireTokenSilent({
+      scopes:  loginScopes,
+      account: account
+    });
+
+    await captureSignedInUser(tokenResponse, account);
+
+  } catch (err) {
+    console.warn("Auth error (form still usable):", err);
+    showAuthPrompt();
+  }
+}
+
+function showAuthPrompt() {
+  const btn = document.getElementById('sign-in-btn');
+  btn.style.display = "inline-flex";
+}
+
+async function signIn() {
+  await msalInstance.loginRedirect({ scopes: loginScopes });
+}
+
+// ═══════════════════════════════════════════════════════════
+// POST-AUTH SETUP
+// ═══════════════════════════════════════════════════════════
+
+async function captureSignedInUser(tokenResponse, account) {
+  // Captures the identity of whoever is actually filling in
+  // the form. Does NOT re-render the form (Phase 1 of init()
+  // already did that based on the URL prefill).
+
+  const upn  = account.username;
+  const name = account.name || upn;
+
+  // Resolve employee number from UPN via Employee Master.
+  // Soft failure — if this throws, currentUser.empNo stays
+  // empty and Power Automate intake can reconcile by UPN.
+  let empNo = "";
+  try {
+    empNo = await resolveEmpNo(tokenResponse.accessToken, upn);
+  } catch(e) {
+    console.warn("Could not resolve emp no:", e);
+  }
+
+  currentUser = { name, upn, empNo };
+
+  // If the signed-in user differs from the prefill target,
+  // show a soft banner. Doesn't block — just makes the
+  // on-behalf scenario visible.
+  if (prefillTarget.empNo && empNo &&
+      String(prefillTarget.empNo) !== String(empNo)) {
+    showOnBehalfBanner(prefillTarget.name, name);
+  }
+
+  // Hide the cold-machine sign-in prompt if it was showing
+  const authPrompt = document.getElementById('auth-prompt-banner');
+  if (authPrompt) authPrompt.style.display = "none";
+}
+
+function showAuthPrompt() {
+  // Surface a sign-in banner ABOVE the (already-rendered) form,
+  // so cold-machine users can sign in without losing the form.
+  let banner = document.getElementById('auth-prompt-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = "auth-prompt-banner";
+    banner.style.cssText =
+      "background:#FFF4E5;border-left:4px solid #F59E0B;" +
+      "padding:14px 18px;margin-bottom:16px;border-radius:4px;";
+    banner.innerHTML = `
+      <div style="font-weight:600;color:#92400E;margin-bottom:4px;">
+        Sign in to submit your response
+      </div>
+      <div style="font-size:13px;color:#78350F;margin-bottom:10px;">
+        You can review the form below first. Sign in with your
+        Macrodyne Microsoft account before submitting.
+      </div>
+      <button class="btn btn-sign-in" onclick="signIn()"
+              style="padding:8px 16px;font-size:13px;">
+        Sign in with Microsoft
+      </button>`;
+    const surveySection = document.getElementById('survey-section');
+    surveySection.insertBefore(banner, surveySection.firstChild);
+  }
+  banner.style.display = "block";
+}
+
+function showOnBehalfBanner(targetName, actualName) {
+  // When the signed-in user differs from the email recipient,
+  // surface that fact. This is informational, not blocking —
+  // "filling on behalf of" is a legitimate use case.
+  let banner = document.getElementById('on-behalf-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = "on-behalf-banner";
+    banner.style.cssText =
+      "background:#EFF6FF;border-left:4px solid #3B82F6;" +
+      "padding:12px 16px;margin-bottom:16px;border-radius:4px;" +
+      "font-size:13px;color:#1E40AF;";
+    const surveySection = document.getElementById('survey-section');
+    surveySection.insertBefore(banner, surveySection.firstChild);
+  }
+  banner.innerHTML =
+    `<strong>You're filling out this survey on behalf of ` +
+    `${targetName}.</strong> Signed in as ${actualName}. ` +
+    `Both identities will be recorded with the response.`;
+  banner.style.display = "block";
+}
+
+// ═══════════════════════════════════════════════════════════
+// EMPLOYEE MASTER LOOKUP
+// ═══════════════════════════════════════════════════════════
+
+async function resolveEmpNo(token, upn) {
+  const url = `${CONFIG.spSite}/_api/web/lists/getbyid` +
+    `('${CONFIG.empMasterGuid}')/items` +
+    `?$select=Employee_x0020_Number` +
+    `&$filter=M365_x0020_UPN eq '${upn}'` +
+    `&$top=1`;
+
+  const r = await fetch(url, {
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Accept": "application/json;odata=verbose"
+    }
+  });
+  const d = await r.json();
+  const results = d?.d?.results || [];
+  return results.length > 0
+    ? results[0].Employee_x0020_Number
+    : "";
+}
+
+// ═══════════════════════════════════════════════════════════
+// URL PARAM PARSING
+// ═══════════════════════════════════════════════════════════
+
+function parseUrlParams() {
+  const p = new URLSearchParams(window.location.search);
+  const count = parseInt(p.get("count") || "1", 10);
+  const devices = [];
+  for (let i = 1; i <= count; i++) {
+    devices.push({
+      hostname: p.get(`hostname${i}`) || "",
+      assetId:  p.get(`assetid${i}`)  || ""
+    });
+  }
+  return {
+    target: {
+      empNo: p.get("emp")  || "",
+      name:  p.get("name") || ""
+    },
+    devices: devices
+  };
+}
+
+// Kept for backwards compatibility — devices only
+function parseDeviceParams() {
+  return parseUrlParams().devices;
+}
+// ═══════════════════════════════════════════════════════════
+// DEVICE CARD RENDERING
+// ═══════════════════════════════════════════════════════════
+
+function renderDeviceCards() {
+  const container = document.getElementById('device-cards-container');
+  container.innerHTML = "";
+
+  if (deviceData.length === 0) {
+    container.innerHTML = `
+      <div class="card" style="border-left:3px solid var(--amber);">
+        <p style="color:var(--amber);font-weight:600;">
+          ⚠ No devices were pre-loaded for your account.
+        </p>
+        <p style="font-size:13px;color:var(--grey-3);margin-top:8px;">
+          If you have a Macrodyne device, please add it using
+          the section below.
+        </p>
+      </div>`;
+    return;
+  }
+
+  deviceData.forEach((device, idx) => {
+    const n    = idx + 1;
+    const card = document.createElement('div');
+    card.className = "device-card";
+    card.id        = `device-card-${idx}`;
+
+    card.innerHTML = `
+      <div class="device-header">
+        <div class="device-icon">💻</div>
+        <div class="device-identifiers">
+          <div class="device-hostname">${device.hostname || "(unknown)"}</div>
+          <div class="device-assetid">${device.assetId  || ""}</div>
+        </div>
+        <div class="device-num">Device ${n} of ${deviceData.length}</div>
+      </div>
+      <div class="device-body">
+
+        <!-- Q: Do you use this device? -->
+        <div class="question">
+          <label class="q-label">Do you use this device?
+            <span style="color:var(--red)">*</span></label>
+          <div class="option-group">
+            <label class="option"
+              onclick="setUsage(${idx},'yes',this)">
+              <input type="radio" name="usage_${idx}" value="yes">
+              <span>Yes, I use this device</span>
+            </label>
+            <label class="option"
+              onclick="setUsage(${idx},'no',this)">
+              <input type="radio" name="usage_${idx}" value="no">
+              <span>No, I don't use this device</span>
+            </label>
+            <label class="option"
+              onclick="setUsage(${idx},'not-mine',this)">
+              <input type="radio" name="usage_${idx}"
+                     value="not-mine">
+              <span>This isn't my device</span>
+            </label>
+          </div>
+          <div class="field-error" id="err-usage-${idx}">
+            Please select an option.
+          </div>
+        </div>
+
+        <!-- IF YES → purpose + device ok -->
+        <div class="sub-section" id="yes-section-${idx}">
+
+          <!-- Purpose -->
+          <div class="question">
+            <label class="q-label">
+              What do you primarily use it for?
+              <span style="color:var(--red)">*</span>
+            </label>
+            <div class="option-group">
+              <label class="option"
+                onclick="setPurpose(${idx},'primary',this)">
+                <input type="radio" name="purpose_${idx}"
+                       value="primary">
+                <span>Primary work machine</span>
+              </label>
+              <label class="option"
+                onclick="setPurpose(${idx},'field',this)">
+                <input type="radio" name="purpose_${idx}"
+                       value="field">
+                <span>Field / remote work</span>
+              </label>
+              <label class="option"
+                onclick="setPurpose(${idx},'dev',this)">
+                <input type="radio" name="purpose_${idx}"
+                       value="dev">
+                <span>Development / lab</span>
+              </label>
+              <label class="option"
+                onclick="setPurpose(${idx},'shared',this)">
+                <input type="radio" name="purpose_${idx}"
+                       value="shared">
+                <span>Shared with a team member</span>
+              </label>
+              <label class="option"
+                onclick="setPurpose(${idx},'other-purpose',this)">
+                <input type="radio" name="purpose_${idx}"
+                       value="other-purpose">
+                <span>Other</span>
+              </label>
+            </div>
+            <div class="sub-section" id="purpose-other-${idx}"
+                 style="margin-top:8px;">
+              <input class="text-input"
+                     id="purpose-other-text-${idx}"
+                     placeholder="Please describe…"
+                     oninput="deviceAnswers[${idx}].purposeOther=this.value">
+            </div>
+            <div class="field-error" id="err-purpose-${idx}">
+              Please select a purpose.
+            </div>
+          </div>
+
+          <!-- Device OK? -->
+          <div class="question">
+            <label class="q-label">
+              Is this device functioning as expected?
+              <span style="color:var(--red)">*</span>
+            </label>
+            <div class="option-group">
+              <label class="option"
+                onclick="setDeviceOk(${idx},'yes',this)">
+                <input type="radio" name="ok_${idx}" value="yes">
+                <span>Yes, working fine</span>
+              </label>
+              <label class="option"
+                onclick="setDeviceOk(${idx},'no',this)">
+                <input type="radio" name="ok_${idx}" value="no">
+                <span>No, there are issues</span>
+              </label>
+            </div>
+            <div class="field-error" id="err-ok-${idx}">
+              Please indicate if the device is working.
+            </div>
+          </div>
+
+          <!-- IF NO → issues sub-section -->
+          <div class="sub-section issue-section"
+               id="issue-section-${idx}">
+
+            <div class="question">
+              <label class="q-label">
+                What issues are you experiencing?
+                <em style="font-weight:400;color:var(--grey-3)">
+                  (select all that apply)</em>
+              </label>
+              <div class="issue-checks">
+                <label class="issue-check">
+                  <input type="checkbox"
+                    onchange="toggleIssue(${idx},'slow',this)">
+                  Very slow — startup, shutdown, or general use
+                </label>
+                <label class="issue-check">
+                  <input type="checkbox"
+                    onchange="toggleIssue(${idx},'crash-machine',this)">
+                  Machine crashes frequently
+                </label>
+                <label class="issue-check">
+                  <input type="checkbox"
+                    onchange="toggleIssue(${idx},'crash-software',this)">
+                  Software crashes frequently
+                </label>
+                <label class="issue-check">
+                  <input type="checkbox"
+                    onchange="toggleIssue(${idx},'fail-load',this)">
+                  Software fails to load
+                </label>
+                <label class="issue-check">
+                  <input type="checkbox" id="other-issue-chk-${idx}"
+                    onchange="toggleIssue(${idx},'other',this)">
+                  Other
+                </label>
+              </div>
+
+              <!-- Other issue text -->
+              <div class="sub-section" id="issue-other-${idx}"
+                   style="margin-top:8px;">
+                <input class="text-input"
+                       id="issue-other-text-${idx}"
+                       placeholder="Please describe the issue…"
+                       oninput="deviceAnswers[${idx}].issueOther=this.value">
+              </div>
+              <div class="field-error" id="err-issues-${idx}">
+                Please select at least one issue.
+              </div>
+            </div>
+
+            <!-- Issue description (optional, free text) -->
+            <div class="question">
+              <label class="q-label">
+                Any additional details about the issues?
+                <em style="font-weight:400;color:var(--grey-3)">
+                  (optional)</em>
+              </label>
+              <textarea class="text-input"
+                id="issue-desc-${idx}" rows="2"
+                placeholder="e.g. AutoCAD crashes when opening large assemblies…"
+                style="resize:vertical;"
+                oninput="deviceAnswers[${idx}].issueDesc=this.value">
+              </textarea>
+            </div>
+
+            <!-- Productivity loss — AFTER issue identification -->
+            <div class="question">
+              <label class="q-label">
+                How much work time do you lose per day
+                because of these issues?
+                <span style="color:var(--red)">*</span>
+              </label>
+              <div class="option-group">
+                <label class="option"
+                  onclick="setProdLoss(${idx},'lt15',this)">
+                  <input type="radio" name="loss_${idx}"
+                         value="lt15">
+                  <span>Under 15 minutes</span>
+                </label>
+                <label class="option"
+                  onclick="setProdLoss(${idx},'15-30',this)">
+                  <input type="radio" name="loss_${idx}"
+                         value="15-30">
+                  <span>15–30 minutes</span>
+                </label>
+                <label class="option"
+                  onclick="setProdLoss(${idx},'30-60',this)">
+                  <input type="radio" name="loss_${idx}"
+                         value="30-60">
+                  <span>30–60 minutes</span>
+                </label>
+                <label class="option"
+                  onclick="setProdLoss(${idx},'gt60',this)">
+                  <input type="radio" name="loss_${idx}"
+                         value="gt60">
+                  <span>Over 1 hour</span>
+                </label>
+              </div>
+              <div class="field-error" id="err-loss-${idx}">
+                Please estimate daily productivity loss.
+              </div>
+            </div>
+
+          </div><!-- /issue-section -->
+        </div><!-- /yes-section -->
+
+        <!-- IF NO → why not using it -->
+        <div class="sub-section flag-section"
+             id="no-section-${idx}">
+          <div class="question">
+            <label class="q-label">
+              Why aren't you using this device?
+              <span style="color:var(--red)">*</span>
+            </label>
+            <div class="option-group">
+              <label class="option"
+                onclick="setNoReason(${idx},'replaced',this)">
+                <input type="radio" name="noreason_${idx}"
+                       value="replaced">
+                <span>It was replaced by another device</span>
+              </label>
+              <label class="option"
+                onclick="setNoReason(${idx},'returned',this)">
+                <input type="radio" name="noreason_${idx}"
+                       value="returned">
+                <span>It was returned to IT</span>
+              </label>
+              <label class="option"
+                onclick="setNoReason(${idx},'never-received',this)">
+                <input type="radio" name="noreason_${idx}"
+                       value="never-received">
+                <span>I never received this device</span>
+              </label>
+              <label class="option"
+                onclick="setNoReason(${idx},'other-no',this)">
+                <input type="radio" name="noreason_${idx}"
+                       value="other-no">
+                <span>Other</span>
+              </label>
+            </div>
+            <div class="sub-section"
+                 id="no-other-${idx}" style="margin-top:8px;">
+              <input class="text-input"
+                     id="no-other-text-${idx}"
+                     placeholder="Please describe…"
+                     oninput="deviceAnswers[${idx}].noReasonOther=this.value">
+            </div>
+            <div class="field-error" id="err-noreason-${idx}">
+              Please tell us why you're not using this device.
+            </div>
+          </div>
+        </div><!-- /no-section -->
+
+        <!-- IF NOT MINE → what device do you have? -->
+        <div class="sub-section recon-section"
+             id="notmine-section-${idx}">
+          <div class="question">
+            <label class="q-label">
+              What device do you actually use?
+            </label>
+            <p class="q-helper">
+              Open Settings → System → About → Device name
+              and copy it here.
+            </p>
+            <input class="text-input"
+                   id="reported-name-${idx}"
+                   placeholder="e.g. MACRODYNE98-LAP"
+                   oninput="deviceAnswers[${idx}].reportedName=this.value">
+          </div>
+        </div><!-- /notmine-section -->
+
+      </div><!-- /device-body -->
+    `;
+
+    container.appendChild(card);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// INTERACTION HANDLERS
+// ═══════════════════════════════════════════════════════════
+
+function setUsage(idx, value, el) {
+  deviceAnswers[idx].usage = value;
+  // Update option styles
+  el.closest('.option-group').querySelectorAll('.option')
+    .forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+  // Show/hide sections
+  show(`yes-section-${idx}`,     value === 'yes');
+  show(`no-section-${idx}`,      value === 'no');
+  show(`notmine-section-${idx}`, value === 'not-mine');
+  // Update card border
+  const card = document.getElementById(`device-card-${idx}`);
+  card.className = "device-card active";
+  updateProgress();
+}
+
+function setPurpose(idx, value, el) {
+  deviceAnswers[idx].purpose = value;
+  el.closest('.option-group').querySelectorAll('.option')
+    .forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+  show(`purpose-other-${idx}`, value === 'other-purpose');
+}
+
+function setDeviceOk(idx, value, el) {
+  deviceAnswers[idx].deviceOk = value;
+  el.closest('.option-group').querySelectorAll('.option')
+    .forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+  show(`issue-section-${idx}`, value === 'no');
+  const card = document.getElementById(`device-card-${idx}`);
+  if (value === 'yes') {
+    card.className = "device-card resolved";
+  } else {
+    card.className = "device-card flagged";
+  }
+  updateProgress();
+}
+
+function toggleIssue(idx, issue, el) {
+  const issues = deviceAnswers[idx].issues;
+  if (el.checked) {
+    if (!issues.includes(issue)) issues.push(issue);
+  } else {
+    const i = issues.indexOf(issue);
+    if (i > -1) issues.splice(i, 1);
+  }
+  show(`issue-other-${idx}`, issues.includes('other'));
+}
+
+function setProdLoss(idx, value, el) {
+  deviceAnswers[idx].prodLoss = value;
+  el.closest('.option-group').querySelectorAll('.option')
+    .forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function setNoReason(idx, value, el) {
+  deviceAnswers[idx].noReason = value;
+  el.closest('.option-group').querySelectorAll('.option')
+    .forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+  show(`no-other-${idx}`, value === 'other-no');
+}
+
+function selectOption(el, name, value) {
+  el.closest('.option-group').querySelectorAll('.option')
+    .forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function show(id, visible) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (visible) {
+    el.classList.add('visible');
+  } else {
+    el.classList.remove('visible');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// UNKNOWN DEVICES
+// ═══════════════════════════════════════════════════════════
+
+function addUnknownDevice() {
+  const list = document.getElementById('unknown-devices-list');
+  const idx  = unknownDevices.length;
+  unknownDevices.push("");
+
+  const entry = document.createElement('div');
+  entry.className = "unknown-device-entry";
+  entry.id = `unknown-entry-${idx}`;
+  entry.innerHTML = `
+    <input class="text-input" placeholder="Device name (e.g. MACRODYNE55-LAP)"
+      oninput="unknownDevices[${idx}]=this.value">
+    <button class="remove-btn" onclick="removeUnknown(${idx})"
+            title="Remove">✕</button>
+  `;
+  list.appendChild(entry);
+}
+
+function removeUnknown(idx) {
+  unknownDevices[idx] = null;
+  const el = document.getElementById(`unknown-entry-${idx}`);
+  if (el) el.remove();
+}
+
+// ═══════════════════════════════════════════════════════════
+// PROGRESS
+// ═══════════════════════════════════════════════════════════
+
+function updateProgress() {
+  if (deviceAnswers.length === 0) return;
+  const answered = deviceAnswers.filter(d =>
+    d.usage !== null &&
+    (d.usage !== 'yes' || d.deviceOk !== null)
+  ).length;
+  const pct = Math.round((answered / deviceAnswers.length) * 80);
+  document.getElementById('progress-fill').style.width = pct + "%";
+}
+
+// ═══════════════════════════════════════════════════════════
+// VALIDATION
+// ═══════════════════════════════════════════════════════════
+
+function validate() {
+  let valid = true;
+
+  deviceAnswers.forEach((d, idx) => {
+    // Usage required for all devices
+    if (!d.usage) {
+      showError2(`err-usage-${idx}`); valid = false;
+    } else {
+      hideError(`err-usage-${idx}`);
+    }
+
+    if (d.usage === 'yes') {
+      if (!d.purpose) {
+        showError2(`err-purpose-${idx}`); valid = false;
+      } else { hideError(`err-purpose-${idx}`); }
+
+      if (!d.deviceOk) {
+        showError2(`err-ok-${idx}`); valid = false;
+      } else { hideError(`err-ok-${idx}`); }
+
+      if (d.deviceOk === 'no') {
+        if (d.issues.length === 0) {
+          showError2(`err-issues-${idx}`); valid = false;
+        } else { hideError(`err-issues-${idx}`); }
+
+        if (!d.prodLoss) {
+          showError2(`err-loss-${idx}`); valid = false;
+        } else { hideError(`err-loss-${idx}`); }
+      }
+    }
+
+    if (d.usage === 'no') {
+      if (!d.noReason) {
+        showError2(`err-noreason-${idx}`); valid = false;
+      } else { hideError(`err-noreason-${idx}`); }
+    }
+  });
+
+  // Work arrangement required
+  const wa = document.querySelector('input[name="work_arrangement"]:checked');
+  if (!wa) {
+    showError2('err-work-arrangement'); valid = false;
+  } else { hideError('err-work-arrangement'); }
+
+  return valid;
+}
+
+function showError2(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.add('visible');
+}
+function hideError(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('visible');
+}
+
+// ═══════════════════════════════════════════════════════════
+// SUBMIT
+// ═══════════════════════════════════════════════════════════
+
+async function submitSurvey() {
+  if (!validate()) {
+    // Scroll to first error
+    const firstErr = document.querySelector('.field-error.visible');
+    if (firstErr) firstErr.scrollIntoView({ behavior:'smooth', block:'center' });
+    return;
+  }
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled    = true;
+  btn.textContent = "Submitting…";
+
+  const workArrangement = document.querySelector(
+    'input[name="work_arrangement"]:checked')?.value || "";
+  const comments = document.getElementById('comments').value.trim();
+
+  // Build payload
+  const payload = {
+    submitted_at:        new Date().toISOString(),
+    // The signed-in user — who actually filled out the form.
+    // May differ from prefill_target when filling on behalf.
+    upn:                 currentUser.upn || "",
+    emp_no:              currentUser.empNo || "",
+    full_name:           currentUser.name || "",
+    // The prefill target — who the email was originally sent to.
+    // Captured from URL params, independent of auth.
+    prefill_target_emp_no: prefillTarget.empNo || "",
+    prefill_target_name:   prefillTarget.name || "",
+    // True when filling on behalf (the two identities differ).
+    on_behalf:           !!(prefillTarget.empNo && currentUser.empNo &&
+                          String(prefillTarget.empNo) !== String(currentUser.empNo)),
+    work_arrangement:    workArrangement,
+    comments:            comments,
+  };
+  
+  try {
+    const r = await fetch(CONFIG.flowUrl, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(payload)
+    });
+
+    if (r.ok || r.status === 202) {
+      document.getElementById('survey-section').style.display  = "none";
+      document.getElementById('success-section').style.display = "block";
+      document.getElementById('progress-fill').style.width = "100%";
+    } else {
+      throw new Error(`HTTP ${r.status}`);
+    }
+
+  } catch(err) {
+    console.error("Submit error:", err);
+    btn.disabled    = false;
+    btn.textContent = "Submit Survey";
+    document.getElementById('error-message').textContent =
+      "There was a problem submitting your responses " +
+      `(${err.message}). Please reply to the IT survey email ` +
+      "and Vijay Nair will assist you directly.";
+    document.getElementById('error-section').style.display = "block";
+  }
+}
+
+function showError(msg) {
+  document.getElementById('auth-section').style.display  = "none";
+  document.getElementById('error-message').textContent = msg;
+  document.getElementById('error-section').style.display = "block";
+}
+
+// ── Start ──
+init();
+</script>
+</body>
+</html>
