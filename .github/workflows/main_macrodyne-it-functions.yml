@@ -44,7 +44,8 @@ jobs:
           zip -r ../deployment.zip . \
             --exclude "*.pyc" \
             --exclude "__pycache__/*" \
-            --exclude ".git/*"
+            --exclude ".git/*" \
+            --exclude "local.settings.json"
           popd
 
       - name: Login to Azure
