@@ -31,11 +31,19 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install dependencies
+      - name: Install dependencies into package folder
         run: |
           pushd ${{ env.PACKAGE_PATH }}
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.txt --target=".python_packages/lib/site-packages"
+          popd
+
+      - name: Zip package
+        run: |
+          pushd ${{ env.PACKAGE_PATH }}
+          zip -r ../app.zip . \
+            --exclude "*.pyc" \
+            --exclude "__pycache__/*" \
+            --exclude "local.settings.json"
           popd
 
       - name: Login to Azure
@@ -49,4 +57,4 @@ jobs:
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          package: ${{ env.PACKAGE_PATH }}
+          package: app.zip
