@@ -1,0 +1,4 @@
+azure-functions
+msal
+requests
+PyJWT
