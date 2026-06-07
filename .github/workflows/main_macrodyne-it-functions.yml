@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: 'requisition' # set this to the path to your web app project, defaults to the repository root
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.' # set this to the path to your web app project, defaults to the repository root
   PYTHON_VERSION: '3.11' # set this to the python version to use (supports 3.6, 3.7, 3.8)
 
 jobs:
@@ -35,7 +35,7 @@ jobs:
           source venv/bin/activate
 
       - name: Install dependencies
-        run: pip install -r requisition/requirements.txt
+        run: pip install -r requirements.txt
 
       # Optional: Add step to run tests here
 
@@ -71,9 +71,9 @@ jobs:
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_DEC4B0D7B58145D99413B2418EDE059B }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_50DD2F28AF4D40B2837D5DE3C238D7E1 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_BD657F8C343445AB9AA68FDC7F4F1A69 }}
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_EF543AB7848E40EA869D6AEEB6B3B3AC }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_7A43C0C109504E8A9F6058768EBCD910 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_470301F8FBA447BA9951B19923EAD208 }}
 
       - name: 'Deploy to Azure Functions'
         uses: Azure/functions-action@v1
