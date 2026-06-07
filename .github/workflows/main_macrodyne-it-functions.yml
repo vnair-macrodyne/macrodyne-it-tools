@@ -51,10 +51,10 @@ jobs:
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_EF543AB7848E40EA869D6AEEB6B383AC }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID_FUNCTIONS }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_7A43C0C109504E8A9F6058768EBCD910 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_470301F8FB4447BA9951B19923EAD208 }}
-
+          
       - name: Deploy to Azure Function App
         run: |
           az functionapp deployment source config-zip \
