@@ -54,7 +54,10 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID_FUNCTIONS }}
 
       - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          package: app.zip
+        run: |
+          az webapp deploy \
+            --resource-group rg-macrodyne-it-tools \
+            --name macrodyne-requisition \
+            --src-path app.zip \
+            --type zip \
+            --async false
