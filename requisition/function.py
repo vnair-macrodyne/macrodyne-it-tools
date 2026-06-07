@@ -1,0 +1,1426 @@
+"""
+Macrodyne Requisition App — Azure Function
+==========================================
+Single HTTP-triggered function handling all requisition routing logic.
+
+Endpoints:
+  POST /api/requisition          — main entry point from HTML form
+  GET  /api/approve?token=<jwt>  — approval link handler (email clicks)
+
+Environment variables (set in Azure Function Application Settings):
+  APPROVAL_TOKEN_SECRET   — 32-char random string for JWT signing
+  FUNCTION_BASE_URL       — e.g. https://macrodyne-it-functions.azurewebsites.net
+  TENANT_ID               — 4c9a50a1-c27f-4044-8025-b59b5b804d16
+  CLIENT_ID               — 6bfa3adb-1f7d-44e4-8cb9-38be4a107549
+  MSAL_CACHE_PATH         — path to token cache file, e.g. /home/.msalcache
+
+All SharePoint writes use the cached delegated token (vnair@).
+Run the function once interactively to prime the cache.
+"""
+
+import os
+import json
+import time
+import logging
+import datetime
+import urllib.parse
+import azure.functions as func
+import requests
+import jwt
+import msal
+
+# ── Configuration ──────────────────────────────────────────────────────────────
+
+TENANT_ID         = os.environ["TENANT_ID"]
+CLIENT_ID         = os.environ["CLIENT_ID"]
+TOKEN_SECRET      = os.environ["APPROVAL_TOKEN_SECRET"]
+FUNCTION_BASE_URL = os.environ["FUNCTION_BASE_URL"].rstrip("/")
+MSAL_CACHE_PATH   = os.environ.get("MSAL_CACHE_PATH", "/home/.msalcache")
+
+GRAPH_SCOPES = [
+    "https://graph.microsoft.com/Sites.Read.All",
+    "https://graph.microsoft.com/Mail.Send",
+]
+SP_WRITE_SCOPES = [
+    "https://macrodyne.sharepoint.com/AllSites.Write",
+    "https://macrodyne.sharepoint.com/AllSites.Read",
+]
+
+# SharePoint sites
+REQ_SITE  = "https://macrodyne.sharepoint.com/sites/Requisitions"
+CRD_SITE  = "https://macrodyne.sharepoint.com/sites/CorporateReferenceData"
+
+# SharePoint list names
+LIST_CONFIG   = "Requisition Config"
+LIST_ROLES    = "Requisition Roles"
+LIST_REQ      = "Requisitions"
+LIST_LINES    = "Requisition Lines"
+LIST_HISTORY  = "Requisition Status History"
+LIST_EMPLOYEE = "Employee Master"
+
+# Token expiry for approval links (hours)
+APPROVAL_TOKEN_EXPIRY_HOURS = 72
+
+logger = logging.getLogger(__name__)
+
+# ── Azure Function entry point ─────────────────────────────────────────────────
+
+app = func.FunctionApp()
+
+@app.route(route="requisition", methods=["POST", "OPTIONS"])
+def requisition_handler(req: func.HttpRequest) -> func.HttpResponse:
+    """Main entry point — receives JSON payload from HTML form."""
+
+    # CORS preflight
+    if req.method == "OPTIONS":
+        return _cors_response(func.HttpResponse("", status_code=200))
+
+    try:
+        payload = req.get_json()
+    except ValueError:
+        return _cors_response(func.HttpResponse(
+            json.dumps({"success": False, "error": "Invalid JSON payload"}),
+            status_code=400,
+            mimetype="application/json"
+        ))
+
+    action = payload.get("action", "")
+    logger.info(f"Requisition action: {action}")
+
+    try:
+        if action == "Submit":
+            result = handle_submit(payload)
+        elif action == "Cancel":
+            result = handle_cancel(payload)
+        elif action == "MarkOrdered":
+            result = handle_mark_ordered(payload)
+        elif action == "MarkReceived":
+            result = handle_mark_received(payload)
+        elif action == "Confirm":
+            result = handle_confirm(payload)
+        elif action == "RejectAtPurchase":
+            result = handle_reject_at_purchase(payload)
+        elif action == "Close":
+            result = handle_close(payload)
+        else:
+            result = {"success": False, "error": f"Unknown action: {action}"}
+
+    except Exception as e:
+        logger.exception(f"Error handling action {action}")
+        result = {"success": False, "error": str(e)}
+
+    return _cors_response(func.HttpResponse(
+        json.dumps(result),
+        status_code=200,
+        mimetype="application/json"
+    ))
+
+
+@app.route(route="approve", methods=["GET"])
+def approve_handler(req: func.HttpRequest) -> func.HttpResponse:
+    """Approval link handler — called when manager/AP clicks email link."""
+
+    token_str = req.params.get("token", "")
+    action    = req.params.get("action", "")  # "approve" or "reject"
+    comment   = req.params.get("comment", "")
+
+    if not token_str or action not in ("approve", "reject"):
+        return func.HttpResponse(
+            _html_page("Invalid Link",
+                "This approval link is invalid or malformed. "
+                "Please contact IT if you believe this is an error."),
+            mimetype="text/html",
+            status_code=400
+        )
+
+    try:
+        claims = jwt.decode(
+            token_str,
+            TOKEN_SECRET,
+            algorithms=["HS256"]
+        )
+    except jwt.ExpiredSignatureError:
+        return func.HttpResponse(
+            _html_page("Link Expired",
+                "This approval link has expired (links are valid for 72 hours). "
+                "Please check if the requisition has already been actioned, "
+                "or contact the requestor to re-submit."),
+            mimetype="text/html",
+            status_code=400
+        )
+    except jwt.InvalidTokenError:
+        return func.HttpResponse(
+            _html_page("Invalid Link",
+                "This approval link is invalid. "
+                "Please contact IT if you believe this is an error."),
+            mimetype="text/html",
+            status_code=400
+        )
+
+    requisition_id   = claims["requisitionID"]
+    expected_status  = claims["expectedStatus"]
+    actor_emp_no     = claims["actorEmpNo"]
+    actor_name       = claims.get("actorName", "")
+
+    try:
+        if action == "approve":
+            result = handle_approval(
+                requisition_id, expected_status,
+                actor_emp_no, actor_name, comment
+            )
+        else:
+            result = handle_rejection(
+                requisition_id, expected_status,
+                actor_emp_no, actor_name, comment
+            )
+
+        if result["success"]:
+            return func.HttpResponse(
+                _html_page("Thank You",
+                    f"Your response has been recorded for requisition "
+                    f"<strong>{requisition_id}</strong>. "
+                    f"The requestor has been notified."),
+                mimetype="text/html"
+            )
+        else:
+            return func.HttpResponse(
+                _html_page("Already Actioned",
+                    f"Requisition <strong>{requisition_id}</strong> has already "
+                    f"been actioned (current status: {result.get('currentStatus','')})."
+                    f" No further action is needed."),
+                mimetype="text/html"
+            )
+
+    except Exception as e:
+        logger.exception("Error processing approval")
+        return func.HttpResponse(
+            _html_page("Error",
+                f"An error occurred processing your response: {str(e)}. "
+                f"Please contact IT."),
+            mimetype="text/html",
+            status_code=500
+        )
+
+
+# ── Branch A — Submit ──────────────────────────────────────────────────────────
+
+def handle_submit(payload: dict) -> dict:
+    """
+    Creates the Requisition and Line Items rows, determines routing,
+    sends the first approval notification.
+    """
+    # Load config and roles from SharePoint
+    config = load_config()
+    roles  = load_roles()
+
+    requestor_emp_no    = payload["requestorEmpNo"]
+    requestor_upn       = payload["requestorUPN"]
+    requestor_name      = payload["requestorFullName"]
+    manager_emp_no      = payload.get("requestorManagerEmpNo", "")
+    dept                = payload.get("requestorDept", "")
+    currency            = payload["currency"]
+    reason              = payload["reason"]
+    line_items          = payload["lineItems"]  # list of dicts
+
+    max_cap = float(config.get("MaxCAD" if currency == "CAD" else "MaxUSD", 5000))
+    notification_sender = config.get("NotificationSender", "vnair@macrodynepress.com")
+
+    # Cap check
+    total = sum(
+        float(item["quantity"]) * float(item["unitPriceEstimate"])
+        for item in line_items
+    )
+    if total > max_cap:
+        return {
+            "success": False,
+            "capExceeded": True,
+            "error": (
+                f"This requisition exceeds the {currency} cap of "
+                f"${max_cap:,.2f}. Please use the formal PO process "
+                f"for purchases over this amount."
+            )
+        }
+
+    # Generate RequisitionID
+    requisition_id = generate_requisition_id()
+
+    # Determine initial status
+    initial_status = "PendingAP" if not manager_emp_no else "PendingManager"
+
+    # Resolve manager UPN if manager exists
+    manager_upn = ""
+    if manager_emp_no:
+        manager_upn = resolve_upn(manager_emp_no)
+
+    # Create Requisitions row
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+    req_row = {
+        "Title":               requisition_id,
+        "RequisitionID":       requisition_id,
+        "Status":              initial_status,
+        "RequestorEmpNo":      requestor_emp_no,
+        "RequestorUPN":        requestor_upn,
+        "RequestorName":       requestor_name,
+        "ManagerEmpNoSnapshot": manager_emp_no,
+        "ManagerUPN":          manager_upn,
+        "Reason":              reason,
+        "Currency":            currency,
+        "TotalAmount":         total,
+        "SubmittedUtc":        now,
+    }
+    sp_create_item(REQ_SITE, LIST_REQ, req_row)
+
+    # Create Requisition Lines rows
+    for i, item in enumerate(line_items, start=1):
+        line_row = {
+            "Title":             f"{requisition_id}-{i:02d}",
+            "RequisitionID":     requisition_id,
+            "LineNumber":        i,
+            "ItemCode":          item.get("itemCode", "OTHER"),
+            "ItemDescription":   item.get("itemDescription", ""),
+            "Quantity":          item.get("quantity", 1),
+            "UnitPriceEstimate": item.get("unitPriceEstimate", 0),
+            "ItemURL":           item.get("itemURL", ""),
+        }
+        sp_create_item(REQ_SITE, LIST_LINES, line_row)
+
+    # Write Status History
+    write_history(
+        requisition_id=requisition_id,
+        from_status="Draft",
+        to_status=initial_status,
+        actor_emp_no=requestor_emp_no,
+        comment="Submitted by requestor"
+    )
+
+    # Send approval notification
+    if initial_status == "PendingManager":
+        _send_manager_approval_email(
+            requisition_id=requisition_id,
+            requestor_name=requestor_name,
+            dept=dept,
+            reason=reason,
+            total=total,
+            currency=currency,
+            line_items=line_items,
+            submitted_utc=now,
+            manager_emp_no=manager_emp_no,
+            manager_upn=manager_upn,
+            notification_sender=notification_sender,
+            roles=roles
+        )
+    else:
+        # Manager skipped — go straight to AP
+        ap_upn = _resolve_ap_upn(requestor_emp_no, roles)
+        _send_ap_approval_email(
+            requisition_id=requisition_id,
+            requestor_name=requestor_name,
+            dept=dept,
+            reason=reason,
+            total=total,
+            currency=currency,
+            line_items=line_items,
+            submitted_utc=now,
+            ap_upn=ap_upn,
+            notification_sender=notification_sender,
+            manager_skipped=True
+        )
+
+    return {"success": True, "requisitionID": requisition_id}
+
+
+# ── Approval handling (email link clicks) ─────────────────────────────────────
+
+def handle_approval(
+    requisition_id: str,
+    expected_status: str,
+    actor_emp_no: str,
+    actor_name: str,
+    comment: str
+) -> dict:
+    """Handles Approve clicks from email links."""
+
+    config = load_config()
+    roles  = load_roles()
+    notification_sender = config.get("NotificationSender", "vnair@macrodynepress.com")
+
+    # Get current requisition
+    req = get_requisition(requisition_id)
+    if not req:
+        raise ValueError(f"Requisition {requisition_id} not found")
+
+    current_status = req.get("Status", "")
+
+    # Guard — already actioned
+    if current_status != expected_status:
+        return {"success": False, "currentStatus": current_status}
+
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+
+    if current_status == "PendingManager":
+        # Advance to PendingAP
+        sp_update_item(REQ_SITE, LIST_REQ, req["ID"], {
+            "Status":               "PendingAP",
+            "ManagerApprovedUtc":   now,
+            "ManagerApproverEmpNo": actor_emp_no,
+            "ManagerApproverEmpName": actor_name,
+            "ManagerComment":       comment,
+        })
+        write_history(
+            requisition_id=requisition_id,
+            from_status="PendingManager",
+            to_status="PendingAP",
+            actor_emp_no=actor_emp_no,
+            comment=comment or "Approved by manager"
+        )
+
+        # Send AP approval email
+        ap_upn = _resolve_ap_upn(req["RequestorEmpNo"], roles)
+        _send_ap_approval_email(
+            requisition_id=requisition_id,
+            requestor_name=req["RequestorName"],
+            dept="",
+            reason=req["Reason"],
+            total=float(req.get("TotalAmount", 0)),
+            currency=req.get("Currency", "CAD"),
+            line_items=get_line_items(requisition_id),
+            submitted_utc=req.get("SubmittedUtc", ""),
+            ap_upn=ap_upn,
+            notification_sender=notification_sender,
+            manager_skipped=False
+        )
+
+    elif current_status == "PendingAP":
+        # Advance to ApprovedPendingPurchase
+        sp_update_item(REQ_SITE, LIST_REQ, req["ID"], {
+            "Status":          "ApprovedPendingPurchase",
+            "APApprovedUtc":   now,
+            "APApproverEmpNo": actor_emp_no,
+            "APComment":       comment,
+        })
+        write_history(
+            requisition_id=requisition_id,
+            from_status="PendingAP",
+            to_status="ApprovedPendingPurchase",
+            actor_emp_no=actor_emp_no,
+            comment=comment or "Approved by AP"
+        )
+
+        # Determine fulfillment recipient
+        fulfill_upn = _resolve_fulfill_upn(req["RequestorEmpNo"], roles)
+
+        # Send fulfillment notification
+        _send_fulfillment_email(
+            requisition_id=requisition_id,
+            requestor_name=req["RequestorName"],
+            requestor_upn=req.get("RequestorUPN", ""),
+            reason=req["Reason"],
+            total=float(req.get("TotalAmount", 0)),
+            currency=req.get("Currency", "CAD"),
+            line_items=get_line_items(requisition_id),
+            approved_utc=now,
+            fulfill_upn=fulfill_upn,
+            manager_upn=req.get("ManagerUPN", ""),
+            notification_sender=notification_sender
+        )
+
+    return {"success": True}
+
+
+def handle_rejection(
+    requisition_id: str,
+    expected_status: str,
+    actor_emp_no: str,
+    actor_name: str,
+    comment: str
+) -> dict:
+    """Handles Reject clicks from email links."""
+
+    config = load_config()
+    notification_sender = config.get("NotificationSender", "vnair@macrodynepress.com")
+
+    req = get_requisition(requisition_id)
+    if not req:
+        raise ValueError(f"Requisition {requisition_id} not found")
+
+    current_status = req.get("Status", "")
+    if current_status != expected_status:
+        return {"success": False, "currentStatus": current_status}
+
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+
+    terminal_status = (
+        "RejectedByManager" if current_status == "PendingManager"
+        else "RejectedByAP"
+    )
+
+    sp_update_item(REQ_SITE, LIST_REQ, req["ID"], {
+        "Status":          terminal_status,
+        "RejectionReason": comment,
+    })
+    write_history(
+        requisition_id=requisition_id,
+        from_status=current_status,
+        to_status=terminal_status,
+        actor_emp_no=actor_emp_no,
+        comment=comment or "Rejected"
+    )
+
+    # Notify requestor
+    cc = req.get("ManagerUPN", "") if current_status == "PendingAP" else ""
+    send_email(
+        sender=notification_sender,
+        to=req.get("RequestorUPN", ""),
+        cc=cc,
+        subject=f"Requisition not approved — {requisition_id}",
+        body=_rejection_email_body(
+            requisition_id=requisition_id,
+            requestor_name=req["RequestorName"],
+            reason=comment
+        )
+    )
+
+    return {"success": True}
+
+
+# ── Branch D — Cancel ─────────────────────────────────────────────────────────
+
+def handle_cancel(payload: dict) -> dict:
+    requisition_id = payload["requisitionID"]
+    actor_emp_no   = payload["actorEmpNo"]
+    comment        = payload.get("comment", "")
+
+    config = load_config()
+    notification_sender = config.get("NotificationSender", "vnair@macrodynepress.com")
+
+    req = get_requisition(requisition_id)
+    if not req:
+        return {"success": False, "error": "Requisition not found"}
+
+    cancellable = {
+        "Draft", "PendingManager", "PendingAP", "ApprovedPendingPurchase"
+    }
+    current_status = req.get("Status", "")
+    if current_status not in cancellable:
+        return {
+            "success": False,
+            "error": "This requisition can no longer be cancelled."
+        }
+
+    sp_update_item(REQ_SITE, LIST_REQ, req["ID"], {
+        "Status":             "CancelledByRequestor",
+        "CancellationReason": comment,
+    })
+    write_history(
+        requisition_id=requisition_id,
+        from_status=current_status,
+        to_status="CancelledByRequestor",
+        actor_emp_no=actor_emp_no,
+        comment=comment or "Cancelled by requestor"
+    )
+
+    # Notify relevant parties
+    if current_status == "PendingManager":
+        send_email(
+            sender=notification_sender,
+            to=req.get("ManagerUPN", ""),
+            cc="",
+            subject=f"Requisition cancelled — {requisition_id}",
+            body=(
+                f"Requisition <strong>{requisition_id}</strong> has been "
+                f"cancelled by the requestor. No further action is required."
+            )
+        )
+    elif current_status in {"PendingAP", "ApprovedPendingPurchase"}:
+        config_roles = load_roles()
+        ap_upn = _resolve_ap_upn(req["RequestorEmpNo"], config_roles)
+        fulfill_upn = _resolve_fulfill_upn(req["RequestorEmpNo"], config_roles)
+        send_email(
+            sender=notification_sender,
+            to=ap_upn,
+            cc=fulfill_upn,
+            subject=f"Requisition cancelled — {requisition_id}",
+            body=(
+                f"Requisition <strong>{requisition_id}</strong> has been "
+                f"cancelled by the requestor. No further action is required."
+            )
+        )
+
+    return {"success": True}
+
+
+# ── Branch E — Mark Ordered ───────────────────────────────────────────────────
+
+def handle_mark_ordered(payload: dict) -> dict:
+    requisition_id = payload["requisitionID"]
+    actor_emp_no   = payload["actorEmpNo"]
+    payment_mode   = payload["paymentMode"]
+    line_updates   = payload.get("lineUpdates", [])
+
+    config = load_config()
+    notification_sender = config.get("NotificationSender", "vnair@macrodynepress.com")
+
+    req = get_requisition(requisition_id)
+    if not req:
+        return {"success": False, "error": "Requisition not found"}
+
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+
+    sp_update_item(REQ_SITE, LIST_REQ, req["ID"], {
+        "Status":        "Ordered",
+        "OrderedUtc":    now,
+        "OrderedByEmpNo": actor_emp_no,
+        "PaymentMode":   payment_mode,
+    })
+    write_history(
+        requisition_id=requisition_id,
+        from_status="ApprovedPendingPurchase",
+        to_status="Ordered",
+        actor_emp_no=actor_emp_no,
+        comment=f"Ordered via {payment_mode}"
+    )
+
+    # Update line items with actual purchase data
+    for update in line_updates:
+        sp_update_item(REQ_SITE, LIST_LINES, update["id"], {
+            "VendorAtPurchase": update.get("vendorAtPurchase", ""),
+            "ActualUnitPrice":  update.get("actualUnitPrice", 0),
+        })
+
+    # Notify requestor
+    cc = req.get("ManagerUPN", "")
+    send_email(
+        sender=notification_sender,
+        to=req.get("RequestorUPN", ""),
+        cc=cc,
+        subject=f"Your requisition has been ordered — {requisition_id}",
+        body=_ordered_email_body(
+            requisition_id=requisition_id,
+            requestor_name=req["RequestorName"],
+            payment_mode=payment_mode,
+            ordered_utc=now
+        )
+    )
+
+    return {"success": True}
+
+
+# ── Branch F — Mark Received ──────────────────────────────────────────────────
+
+def handle_mark_received(payload: dict) -> dict:
+    requisition_id = payload["requisitionID"]
+    actor_emp_no   = payload["actorEmpNo"]
+
+    config = load_config()
+    notification_sender = config.get("NotificationSender", "vnair@macrodynepress.com")
+
+    req = get_requisition(requisition_id)
+    if not req:
+        return {"success": False, "error": "Requisition not found"}
+
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+
+    sp_update_item(REQ_SITE, LIST_REQ, req["ID"], {
+        "Status":          "Received",
+        "ReceivedUtc":     now,
+        "ReceivedByEmpNo": actor_emp_no,
+    })
+    write_history(
+        requisition_id=requisition_id,
+        from_status="Ordered",
+        to_status="Received",
+        actor_emp_no=actor_emp_no,
+        comment="Item received at reception"
+    )
+
+    receipt_days = config.get("ReceiptConfirmDays", "5")
+    cc = req.get("ManagerUPN", "")
+    send_email(
+        sender=notification_sender,
+        to=req.get("RequestorUPN", ""),
+        cc=cc,
+        subject=f"Your order has arrived — {requisition_id}",
+        body=_received_email_body(
+            requisition_id=requisition_id,
+            requestor_name=req["RequestorName"],
+            received_utc=now,
+            receipt_days=receipt_days
+        )
+    )
+
+    return {"success": True}
+
+
+# ── Branch G — Confirm Receipt ────────────────────────────────────────────────
+
+def handle_confirm(payload: dict) -> dict:
+    requisition_id = payload["requisitionID"]
+    actor_emp_no   = payload["actorEmpNo"]
+
+    config = load_config()
+    roles  = load_roles()
+    notification_sender = config.get("NotificationSender", "vnair@macrodynepress.com")
+
+    req = get_requisition(requisition_id)
+    if not req:
+        return {"success": False, "error": "Requisition not found"}
+
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+
+    # Confirm then auto-close
+    sp_update_item(REQ_SITE, LIST_REQ, req["ID"], {
+        "Status":       "Closed",
+        "ConfirmedUtc": now,
+        "ClosedUtc":    now,
+    })
+    write_history(
+        requisition_id=requisition_id,
+        from_status="Received",
+        to_status="ConfirmedByRequestor",
+        actor_emp_no=actor_emp_no,
+        comment="Requestor confirmed receipt"
+    )
+    write_history(
+        requisition_id=requisition_id,
+        from_status="ConfirmedByRequestor",
+        to_status="Closed",
+        actor_emp_no=actor_emp_no,
+        comment="Auto-closed on receipt confirmation"
+    )
+
+    fulfill_upn = _resolve_fulfill_upn(req["RequestorEmpNo"], roles)
+    cc = req.get("ManagerUPN", "")
+    send_email(
+        sender=notification_sender,
+        to=fulfill_upn,
+        cc=cc,
+        subject=f"Receipt confirmed — {requisition_id}",
+        body=(
+            f"<p>{req['RequestorName']} has confirmed receipt of their order "
+            f"for requisition <strong>{requisition_id}</strong>. "
+            f"This requisition is now closed.</p>"
+        )
+    )
+
+    return {"success": True}
+
+
+# ── Branch H — Reject at Purchase ────────────────────────────────────────────
+
+def handle_reject_at_purchase(payload: dict) -> dict:
+    requisition_id = payload["requisitionID"]
+    actor_emp_no   = payload["actorEmpNo"]
+    comment        = payload.get("comment", "")
+
+    config = load_config()
+    roles  = load_roles()
+    notification_sender = config.get("NotificationSender", "vnair@macrodynepress.com")
+
+    req = get_requisition(requisition_id)
+    if not req:
+        return {"success": False, "error": "Requisition not found"}
+
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+
+    sp_update_item(REQ_SITE, LIST_REQ, req["ID"], {
+        "Status":                    "RejectedAtPurchase",
+        "RejectedAtPurchaseUtc":     now,
+        "RejectedAtPurchaseByEmpNo": actor_emp_no,
+        "RejectionReason":           comment,
+    })
+    write_history(
+        requisition_id=requisition_id,
+        from_status="ApprovedPendingPurchase",
+        to_status="RejectedAtPurchase",
+        actor_emp_no=actor_emp_no,
+        comment=comment or "Rejected at purchase"
+    )
+
+    ap_upn = _resolve_ap_upn(req["RequestorEmpNo"], roles)
+    cc_parts = [req.get("ManagerUPN", ""), ap_upn]
+    cc = ",".join(p for p in cc_parts if p)
+
+    send_email(
+        sender=notification_sender,
+        to=req.get("RequestorUPN", ""),
+        cc=cc,
+        subject=f"Requisition could not be purchased — {requisition_id}",
+        body=_rejected_at_purchase_email_body(
+            requisition_id=requisition_id,
+            requestor_name=req["RequestorName"],
+            reason=comment
+        )
+    )
+
+    return {"success": True}
+
+
+# ── Branch I — Manual Close ───────────────────────────────────────────────────
+
+def handle_close(payload: dict) -> dict:
+    requisition_id = payload["requisitionID"]
+    actor_emp_no   = payload["actorEmpNo"]
+    comment        = payload.get("comment", "")
+
+    req = get_requisition(requisition_id)
+    if not req:
+        return {"success": False, "error": "Requisition not found"}
+
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+    current_status = req.get("Status", "")
+
+    sp_update_item(REQ_SITE, LIST_REQ, req["ID"], {
+        "Status":    "Closed",
+        "ClosedUtc": now,
+    })
+    write_history(
+        requisition_id=requisition_id,
+        from_status=current_status,
+        to_status="Closed",
+        actor_emp_no=actor_emp_no,
+        comment=comment or "Manually closed by AP"
+    )
+
+    return {"success": True}
+
+
+# ── SharePoint helpers ─────────────────────────────────────────────────────────
+
+def _get_sp_token() -> str:
+    """Get a SharePoint delegated token from MSAL cache."""
+    cache = msal.SerializableTokenCache()
+    if os.path.exists(MSAL_CACHE_PATH):
+        with open(MSAL_CACHE_PATH, "r") as f:
+            cache.deserialize(f.read())
+
+    app_msal = msal.PublicClientApplication(
+        client_id=CLIENT_ID,
+        authority=f"https://login.microsoftonline.com/{TENANT_ID}",
+        token_cache=cache
+    )
+
+    accounts = app_msal.get_accounts()
+    if accounts:
+        result = app_msal.acquire_token_silent(
+            scopes=SP_WRITE_SCOPES,
+            account=accounts[0]
+        )
+        if result and "access_token" in result:
+            _save_cache(cache)
+            return result["access_token"]
+
+    # Fall through to interactive — only needed on first run
+    result = app_msal.acquire_token_interactive(scopes=SP_WRITE_SCOPES)
+    if "access_token" not in result:
+        raise RuntimeError(f"SP auth failed: {result.get('error_description')}")
+    _save_cache(cache)
+    return result["access_token"]
+
+
+def _get_graph_token() -> str:
+    """Get a Graph delegated token from MSAL cache."""
+    cache = msal.SerializableTokenCache()
+    if os.path.exists(MSAL_CACHE_PATH):
+        with open(MSAL_CACHE_PATH, "r") as f:
+            cache.deserialize(f.read())
+
+    app_msal = msal.PublicClientApplication(
+        client_id=CLIENT_ID,
+        authority=f"https://login.microsoftonline.com/{TENANT_ID}",
+        token_cache=cache
+    )
+
+    accounts = app_msal.get_accounts()
+    if accounts:
+        result = app_msal.acquire_token_silent(
+            scopes=GRAPH_SCOPES,
+            account=accounts[0]
+        )
+        if result and "access_token" in result:
+            _save_cache(cache)
+            return result["access_token"]
+
+    result = app_msal.acquire_token_interactive(scopes=GRAPH_SCOPES)
+    if "access_token" not in result:
+        raise RuntimeError(f"Graph auth failed: {result.get('error_description')}")
+    _save_cache(cache)
+    return result["access_token"]
+
+
+def _save_cache(cache: msal.SerializableTokenCache):
+    if cache.has_state_changed:
+        with open(MSAL_CACHE_PATH, "w") as f:
+            f.write(cache.serialize())
+
+
+def sp_get_items(site: str, list_name: str, filter_query: str = "") -> list:
+    """Read items from a SharePoint list via SharePoint REST API."""
+    token = _get_sp_token()
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+    }
+    url = (
+        f"{site}/_api/web/lists/getbytitle"
+        f"('{urllib.parse.quote(list_name)}')/items"
+    )
+    if filter_query:
+        url += f"?$filter={urllib.parse.quote(filter_query)}"
+
+    items = []
+    while url:
+        r = requests.get(url, headers=headers)
+        r.raise_for_status()
+        data = r.json()
+        items.extend(data.get("value", []))
+        url = data.get("@odata.nextLink")
+    return items
+
+
+def sp_create_item(site: str, list_name: str, fields: dict) -> dict:
+    """Create an item in a SharePoint list via SharePoint REST API."""
+    token = _get_sp_token()
+    # Get list metadata for __metadata type
+    meta_url = (
+        f"{site}/_api/web/lists/getbytitle"
+        f"('{urllib.parse.quote(list_name)}')?$select=ListItemEntityTypeFullName"
+    )
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    meta_r = requests.get(meta_url, headers=headers)
+    meta_r.raise_for_status()
+    entity_type = meta_r.json().get(
+        "ListItemEntityTypeFullName",
+        "SP.Data.ListItem"
+    )
+
+    body = {"__metadata": {"type": entity_type}, **fields}
+    url = (
+        f"{site}/_api/web/lists/getbytitle"
+        f"('{urllib.parse.quote(list_name)}')/items"
+    )
+    headers["X-RequestDigest"] = _get_request_digest(site, token)
+
+    r = requests.post(url, headers=headers, json=body)
+    r.raise_for_status()
+    return r.json()
+
+
+def sp_update_item(site: str, list_name: str, item_id: int, fields: dict):
+    """Update an item in a SharePoint list via SharePoint REST API."""
+    token = _get_sp_token()
+    meta_url = (
+        f"{site}/_api/web/lists/getbytitle"
+        f"('{urllib.parse.quote(list_name)}')?$select=ListItemEntityTypeFullName"
+    )
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "IF-MATCH": "*",
+        "X-HTTP-Method": "MERGE",
+    }
+    meta_r = requests.get(
+        meta_url,
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    )
+    meta_r.raise_for_status()
+    entity_type = meta_r.json().get(
+        "ListItemEntityTypeFullName",
+        "SP.Data.ListItem"
+    )
+
+    body = {"__metadata": {"type": entity_type}, **fields}
+    url = (
+        f"{site}/_api/web/lists/getbytitle"
+        f"('{urllib.parse.quote(list_name)}')/items({item_id})"
+    )
+    headers["X-RequestDigest"] = _get_request_digest(site, token)
+
+    r = requests.post(url, headers=headers, json=body)
+    r.raise_for_status()
+
+
+def _get_request_digest(site: str, token: str) -> str:
+    """Get SharePoint request digest for write operations."""
+    r = requests.post(
+        f"{site}/_api/contextinfo",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+        }
+    )
+    r.raise_for_status()
+    return r.json()["FormDigestValue"]
+
+
+def load_config() -> dict:
+    """Load Requisition Config as a key/value dict."""
+    items = sp_get_items(REQ_SITE, LIST_CONFIG)
+    return {
+        item.get("ConfigKey", ""): item.get("ConfigValue", "")
+        for item in items
+    }
+
+
+def load_roles() -> dict:
+    """Load Requisition Roles as a dict keyed by RoleCode."""
+    items = sp_get_items(REQ_SITE, LIST_ROLES)
+    return {
+        item.get("Title", ""): item
+        for item in items
+    }
+
+
+def get_requisition(requisition_id: str) -> dict | None:
+    """Get a single requisition by RequisitionID."""
+    items = sp_get_items(
+        REQ_SITE, LIST_REQ,
+        f"RequisitionID eq '{requisition_id}'"
+    )
+    return items[0] if items else None
+
+
+def get_line_items(requisition_id: str) -> list:
+    """Get all line items for a requisition."""
+    return sp_get_items(
+        REQ_SITE, LIST_LINES,
+        f"RequisitionID eq '{requisition_id}'"
+    )
+
+
+def write_history(
+    requisition_id: str,
+    from_status: str,
+    to_status: str,
+    actor_emp_no: str,
+    comment: str = ""
+):
+    """Write a Status History row."""
+    sp_create_item(REQ_SITE, LIST_HISTORY, {
+        "Title":          f"{requisition_id}:{from_status}→{to_status}",
+        "RequisitionID":  requisition_id,
+        "FromStatus":     from_status,
+        "ToStatus":       to_status,
+        "TransitionUtc":  datetime.datetime.utcnow().isoformat() + "Z",
+        "ActorEmpNo":     actor_emp_no,
+        "Comment":        comment,
+    })
+
+
+def generate_requisition_id() -> str:
+    """Generate REQ-YYYY-NNNN where NNNN is this year's sequential count."""
+    year = datetime.datetime.utcnow().year
+    year_start = f"{year}-01-01T00:00:00Z"
+    year_end   = f"{year + 1}-01-01T00:00:00Z"
+
+    existing = sp_get_items(
+        REQ_SITE, LIST_REQ,
+        f"SubmittedUtc ge datetime'{year_start}' "
+        f"and SubmittedUtc lt datetime'{year_end}'"
+    )
+    seq = len(existing) + 1
+    return f"REQ-{year}-{seq:04d}"
+
+
+def resolve_upn(emp_no: str) -> str:
+    """Look up M365UPN for an EmpNo in Employee Master."""
+    if not emp_no:
+        return ""
+    items = sp_get_items(
+        CRD_SITE, LIST_EMPLOYEE,
+        f"EmpNo eq '{emp_no}'"
+    )
+    if items:
+        return items[0].get("M365UPN", "")
+    return ""
+
+
+# ── Routing helpers ────────────────────────────────────────────────────────────
+
+def _resolve_ap_upn(requestor_emp_no: str, roles: dict) -> str:
+    """Determine who gets the AP approval email."""
+    ap_role = roles.get("AP-Approver", {})
+    primary_emp_no = str(ap_role.get("PrimaryEmpNo", ""))
+    backup_emp_no  = str(ap_role.get("BackupEmpNo", ""))
+
+    if str(requestor_emp_no) == primary_emp_no:
+        # Requestor IS the AP primary — route to backup (Hari)
+        return resolve_upn(backup_emp_no)
+    return resolve_upn(primary_emp_no)
+
+
+def _resolve_fulfill_upn(requestor_emp_no: str, roles: dict) -> str:
+    """Determine who gets the fulfillment email."""
+    fulfill_role = roles.get("Fulfillment", {})
+    primary_emp_no = str(fulfill_role.get("PrimaryEmpNo", ""))
+    backup_emp_no  = str(fulfill_role.get("BackupEmpNo", ""))
+
+    if str(requestor_emp_no) == primary_emp_no:
+        if backup_emp_no:
+            return resolve_upn(backup_emp_no)
+        else:
+            # No backup — fall back to AP approver
+            ap_role = roles.get("AP-Approver", {})
+            return resolve_upn(str(ap_role.get("PrimaryEmpNo", "")))
+    return resolve_upn(primary_emp_no)
+
+
+# ── Email helpers ──────────────────────────────────────────────────────────────
+
+def send_email(sender: str, to: str, cc: str, subject: str, body: str):
+    """Send email via Microsoft Graph on behalf of the cached user."""
+    if not to:
+        logger.warning(f"send_email called with empty To address. Subject: {subject}")
+        return
+
+    token = _get_graph_token()
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+
+    to_recipients = [{"emailAddress": {"address": addr.strip()}}
+                     for addr in to.split(",") if addr.strip()]
+    cc_recipients = [{"emailAddress": {"address": addr.strip()}}
+                     for addr in cc.split(",") if addr.strip()]
+
+    message = {
+        "message": {
+            "subject": subject,
+            "body": {"contentType": "HTML", "content": body},
+            "toRecipients": to_recipients,
+            "ccRecipients": cc_recipients,
+        }
+    }
+
+    r = requests.post(
+        "https://graph.microsoft.com/v1.0/me/sendMail",
+        headers=headers,
+        json=message
+    )
+    r.raise_for_status()
+
+
+def _make_approval_token(
+    requisition_id: str,
+    expected_status: str,
+    actor_emp_no: str,
+    actor_name: str
+) -> str:
+    """Generate a signed JWT for approval email links."""
+    payload = {
+        "requisitionID":  requisition_id,
+        "expectedStatus": expected_status,
+        "actorEmpNo":     actor_emp_no,
+        "actorName":      actor_name,
+        "exp":            int(time.time()) + (APPROVAL_TOKEN_EXPIRY_HOURS * 3600),
+    }
+    return jwt.encode(payload, TOKEN_SECRET, algorithm="HS256")
+
+
+def _approval_links(
+    requisition_id: str,
+    expected_status: str,
+    actor_emp_no: str,
+    actor_name: str
+) -> tuple[str, str]:
+    """Return (approve_url, reject_url) for embedding in emails."""
+    token = _make_approval_token(
+        requisition_id, expected_status, actor_emp_no, actor_name
+    )
+    base = f"{FUNCTION_BASE_URL}/api/approve?token={urllib.parse.quote(token)}"
+    return f"{base}&action=approve", f"{base}&action=reject"
+
+
+def _line_items_table(line_items: list) -> str:
+    """Render line items as an HTML table."""
+    rows = "".join(
+        f"<tr>"
+        f"<td style='padding:6px 12px;border:1px solid #e0e0e0'>{item.get('ItemDescription','')}</td>"
+        f"<td style='padding:6px 12px;border:1px solid #e0e0e0;text-align:center'>{item.get('Quantity',1)}</td>"
+        f"<td style='padding:6px 12px;border:1px solid #e0e0e0;text-align:right'>${float(item.get('UnitPriceEstimate',0)):,.2f}</td>"
+        f"<td style='padding:6px 12px;border:1px solid #e0e0e0;text-align:right'>${float(item.get('Quantity',1))*float(item.get('UnitPriceEstimate',0)):,.2f}</td>"
+        f"</tr>"
+        for item in line_items
+    )
+    return f"""
+    <table style='border-collapse:collapse;width:100%;font-size:13px;margin:12px 0'>
+      <thead>
+        <tr style='background:#0078D4;color:white'>
+          <th style='padding:8px 12px;text-align:left'>Description</th>
+          <th style='padding:8px 12px;text-align:center'>Qty</th>
+          <th style='padding:8px 12px;text-align:right'>Unit Est.</th>
+          <th style='padding:8px 12px;text-align:right'>Total Est.</th>
+        </tr>
+      </thead>
+      <tbody>{rows}</tbody>
+    </table>"""
+
+
+def _email_wrapper(content: str) -> str:
+    """Wrap email content in Macrodyne-branded HTML shell."""
+    return f"""
+    <html><body style='font-family:Segoe UI,Arial,sans-serif;color:#212121;max-width:680px;margin:0 auto'>
+      <div style='background:#0078D4;padding:16px 24px'>
+        <span style='color:white;font-size:18px;font-weight:600'>Macrodyne Technologies</span>
+        <span style='color:#c7e0f4;font-size:13px;margin-left:12px'>IT Requisition System</span>
+      </div>
+      <div style='padding:24px'>
+        {content}
+        <hr style='border:none;border-top:1px solid #e0e0e0;margin:24px 0'>
+        <p style='font-size:11px;color:#757575'>
+          This is an automated notification from the Macrodyne IT Requisition System.
+          All items are delivered to the reception desk.
+          Do not reply to this email — use the Requisitions app for any changes.
+        </p>
+      </div>
+    </body></html>"""
+
+
+def _send_manager_approval_email(
+    requisition_id, requestor_name, dept, reason,
+    total, currency, line_items, submitted_utc,
+    manager_emp_no, manager_upn, notification_sender, roles
+):
+    approve_url, reject_url = _approval_links(
+        requisition_id, "PendingManager", manager_emp_no, ""
+    )
+    body = _email_wrapper(f"""
+        <h2 style='color:#0078D4;margin-top:0'>Approval Required</h2>
+        <p>A purchase requisition requires your approval.</p>
+        <table style='font-size:13px'>
+          <tr><td style='padding:4px 16px 4px 0;color:#757575'>Requisition</td>
+              <td><strong>{requisition_id}</strong></td></tr>
+          <tr><td style='padding:4px 16px 4px 0;color:#757575'>Requested by</td>
+              <td>{requestor_name}{f' — {dept}' if dept else ''}</td></tr>
+          <tr><td style='padding:4px 16px 4px 0;color:#757575'>Reason</td>
+              <td>{reason}</td></tr>
+          <tr><td style='padding:4px 16px 4px 0;color:#757575'>Total estimate</td>
+              <td><strong>{currency} ${total:,.2f}</strong></td></tr>
+        </table>
+        {_line_items_table(line_items)}
+        <div style='margin:24px 0'>
+          <a href='{approve_url}'
+             style='background:#107C10;color:white;padding:10px 24px;text-decoration:none;
+                    border-radius:4px;font-weight:600;margin-right:12px'>
+            ✓ Approve
+          </a>
+          <a href='{reject_url}'
+             style='background:#A4262C;color:white;padding:10px 24px;text-decoration:none;
+                    border-radius:4px;font-weight:600'>
+            ✗ Reject
+          </a>
+        </div>
+        <p style='font-size:12px;color:#757575'>
+          Approval links expire in {APPROVAL_TOKEN_EXPIRY_HOURS} hours.
+        </p>""")
+
+    send_email(
+        sender=notification_sender,
+        to=manager_upn,
+        cc="",
+        subject=f"Approval required — {requisition_id}",
+        body=body
+    )
+
+
+def _send_ap_approval_email(
+    requisition_id, requestor_name, dept, reason,
+    total, currency, line_items, submitted_utc,
+    ap_upn, notification_sender, manager_skipped=False
+):
+    config = load_config()
+    roles  = load_roles()
+    ap_role = roles.get("AP-Approver", {})
+    ap_emp_no = str(ap_role.get("PrimaryEmpNo", ""))
+
+    approve_url, reject_url = _approval_links(
+        requisition_id, "PendingAP", ap_emp_no, ""
+    )
+    skip_note = (
+        "<p style='color:#757575;font-size:12px'>"
+        "Note: Manager approval step was skipped "
+        "(requestor has no manager in the system).</p>"
+        if manager_skipped else ""
+    )
+    body = _email_wrapper(f"""
+        <h2 style='color:#0078D4;margin-top:0'>AP Approval Required</h2>
+        <p>A purchase requisition has been approved by the manager and requires AP approval.</p>
+        {skip_note}
+        <table style='font-size:13px'>
+          <tr><td style='padding:4px 16px 4px 0;color:#757575'>Requisition</td>
+              <td><strong>{requisition_id}</strong></td></tr>
+          <tr><td style='padding:4px 16px 4px 0;color:#757575'>Requested by</td>
+              <td>{requestor_name}{f' — {dept}' if dept else ''}</td></tr>
+          <tr><td style='padding:4px 16px 4px 0;color:#757575'>Reason</td>
+              <td>{reason}</td></tr>
+          <tr><td style='padding:4px 16px 4px 0;color:#757575'>Total estimate</td>
+              <td><strong>{currency} ${total:,.2f}</strong></td></tr>
+        </table>
+        {_line_items_table(line_items)}
+        <div style='margin:24px 0'>
+          <a href='{approve_url}'
+             style='background:#107C10;color:white;padding:10px 24px;text-decoration:none;
+                    border-radius:4px;font-weight:600;margin-right:12px'>
+            ✓ Approve
+          </a>
+          <a href='{reject_url}'
+             style='background:#A4262C;color:white;padding:10px 24px;text-decoration:none;
+                    border-radius:4px;font-weight:600'>
+            ✗ Reject
+          </a>
+        </div>
+        <p style='font-size:12px;color:#757575'>
+          Approval links expire in {APPROVAL_TOKEN_EXPIRY_HOURS} hours.
+        </p>""")
+
+    send_email(
+        sender=notification_sender,
+        to=ap_upn,
+        cc="",
+        subject=f"AP approval required — {requisition_id}",
+        body=body
+    )
+
+
+def _send_fulfillment_email(
+    requisition_id, requestor_name, requestor_upn, reason,
+    total, currency, line_items, approved_utc,
+    fulfill_upn, manager_upn, notification_sender
+):
+    body = _email_wrapper(f"""
+        <h2 style='color:#0078D4;margin-top:0'>Ready to Purchase</h2>
+        <p>A requisition has been approved and is ready for purchase.</p>
+        <table style='font-size:13px'>
+          <tr><td style='padding:4px 16px 4px 0;color:#757575'>Requisition</td>
+              <td><strong>{requisition_id}</strong></td></tr>
+          <tr><td style='padding:4px 16px 4px 0;color:#757575'>Requested by</td>
+              <td>{requestor_name}</td></tr>
+          <tr><td style='padding:4px 16px 4px 0;color:#757575'>Reason</td>
+              <td>{reason}</td></tr>
+          <tr><td style='padding:4px 16px 4px 0;color:#757575'>Total estimate</td>
+              <td><strong>{currency} ${total:,.2f}</strong></td></tr>
+        </table>
+        {_line_items_table(line_items)}
+        <p>Please process this order and mark it as Ordered in the Requisitions app once purchased.</p>""")
+
+    cc_parts = [requestor_upn, manager_upn]
+    cc = ",".join(p for p in cc_parts if p)
+    send_email(
+        sender=notification_sender,
+        to=fulfill_upn,
+        cc=cc,
+        subject=f"Ready to purchase — {requisition_id}",
+        body=body
+    )
+
+
+def _ordered_email_body(
+    requisition_id, requestor_name, payment_mode, ordered_utc
+) -> str:
+    return _email_wrapper(f"""
+        <h2 style='color:#0078D4;margin-top:0'>Your Requisition Has Been Ordered</h2>
+        <table style='font-size:13px'>
+          <tr><td style='padding:4px 16px 4px 0;color:#757575'>Requisition</td>
+              <td><strong>{requisition_id}</strong></td></tr>
+          <tr><td style='padding:4px 16px 4px 0;color:#757575'>Ordered</td>
+              <td>{ordered_utc[:10]}</td></tr>
+          <tr><td style='padding:4px 16px 4px 0;color:#757575'>Payment method</td>
+              <td>{payment_mode}</td></tr>
+        </table>
+        <p>You will receive a notification when your order arrives at the reception desk.</p>""")
+
+
+def _received_email_body(
+    requisition_id, requestor_name, received_utc, receipt_days
+) -> str:
+    return _email_wrapper(f"""
+        <h2 style='color:#0078D4;margin-top:0'>Your Order Has Arrived</h2>
+        <p>Your order is ready for pickup at the reception desk.</p>
+        <table style='font-size:13px'>
+          <tr><td style='padding:4px 16px 4px 0;color:#757575'>Requisition</td>
+              <td><strong>{requisition_id}</strong></td></tr>
+          <tr><td style='padding:4px 16px 4px 0;color:#757575'>Arrived</td>
+              <td>{received_utc[:10]}</td></tr>
+        </table>
+        <p>Please confirm receipt in the Requisitions app within
+           <strong>{receipt_days} business days</strong>.</p>""")
+
+
+def _rejection_email_body(
+    requisition_id, requestor_name, reason
+) -> str:
+    return _email_wrapper(f"""
+        <h2 style='color:#A4262C;margin-top:0'>Requisition Not Approved</h2>
+        <table style='font-size:13px'>
+          <tr><td style='padding:4px 16px 4px 0;color:#757575'>Requisition</td>
+              <td><strong>{requisition_id}</strong></td></tr>
+          <tr><td style='padding:4px 16px 4px 0;color:#757575'>Reason</td>
+              <td>{reason or 'No reason provided.'}</td></tr>
+        </table>
+        <p>You may re-submit with adjustments, or contact Finance if this
+           purchase is business-critical and exceeds the self-service cap.</p>""")
+
+
+def _rejected_at_purchase_email_body(
+    requisition_id, requestor_name, reason
+) -> str:
+    return _email_wrapper(f"""
+        <h2 style='color:#A4262C;margin-top:0'>Requisition Could Not Be Purchased</h2>
+        <table style='font-size:13px'>
+          <tr><td style='padding:4px 16px 4px 0;color:#757575'>Requisition</td>
+              <td><strong>{requisition_id}</strong></td></tr>
+          <tr><td style='padding:4px 16px 4px 0;color:#757575'>Reason</td>
+              <td>{reason or 'No reason provided.'}</td></tr>
+        </table>
+        <p>Please re-submit with an updated estimate, or contact Finance to
+           proceed via the formal PO process if the amount exceeds the cap.</p>""")
+
+
+# ── Approval page HTML ─────────────────────────────────────────────────────────
+
+def _html_page(title: str, message: str) -> str:
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{title} — Macrodyne Requisitions</title>
+  <style>
+    body {{ font-family: 'Segoe UI', Arial, sans-serif; background: #f5f5f5;
+            display: flex; align-items: center; justify-content: center;
+            min-height: 100vh; margin: 0; }}
+    .card {{ background: white; border-radius: 8px; padding: 40px;
+             max-width: 480px; width: 90%; box-shadow: 0 2px 8px rgba(0,0,0,.1); }}
+    .header {{ background: #0078D4; color: white; padding: 12px 20px;
+               border-radius: 8px 8px 0 0; margin: -40px -40px 24px; }}
+    h1 {{ margin: 0; font-size: 16px; font-weight: 600; }}
+    .sub {{ font-size: 12px; opacity: .8; }}
+    h2 {{ color: #0078D4; margin-top: 0; }}
+    p {{ color: #424242; line-height: 1.5; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>Macrodyne Technologies</h1>
+      <div class="sub">IT Requisition System</div>
+    </div>
+    <h2>{title}</h2>
+    <p>{message}</p>
+  </div>
+</body>
+</html>"""
+
+
+# ── CORS helper ────────────────────────────────────────────────────────────────
+
+def _cors_response(response: func.HttpResponse) -> func.HttpResponse:
+    response.headers["Access-Control-Allow-Origin"]  = "*"
+    response.headers["Access-Control-Allow-Methods"] = "POST, GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    return response
