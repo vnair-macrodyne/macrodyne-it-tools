@@ -675,18 +675,23 @@ async function onSignedIn() {
   try {
     const emp = await resolveEmployee(upn);
     currentUser = {
-      upn,
-      empNo:         emp?.EmpNo         || '',
-      fullName:      emp?.FullName       || name,
-      dept:          emp?.Department     || '',
-      managerEmpNo:  emp?.ManagerEmpNo   || '',
-      managerName:   emp?.ManagerName    || '',
-      roleCode:      emp?.RoleCode       || '',
-    };
-  } catch(e) {
-    currentUser = { upn, empNo: '', fullName: name, dept: '', managerEmpNo: '', managerName: '' };
-    console.warn('Employee Master lookup failed:', e);
-  }
+        upn,
+        empNo:        emp?.Employee_x0020_Number || '',
+        fullName:     emp?.Full_x0020_Name       || name,
+        dept:         emp?.Department_x0020_Name || '',
+        managerEmpNo: emp?.ManagerEmpNo          || '',
+        managerName:  '',
+        roleCode:     emp?.Role_x0020_Code       || '',
+      };
+
+      // Resolve manager name if manager exists
+      if (currentUser.managerEmpNo) {
+        try {
+          currentUser.managerName = await resolveManagerName(currentUser.managerEmpNo);
+        } catch(e) {
+          currentUser.managerName = `EmpNo ${currentUser.managerEmpNo}`;
+        }
+      }
 
   // Populate requestor info panel
   document.getElementById('info-name').textContent    = currentUser.fullName;
@@ -724,25 +729,25 @@ async function spGet(site, listName, filter) {
 
 async function resolveEmployee(upn) {
   const token = await getSpToken();
-  const url = `${CONFIG.crdSite}/_api/web/lists/getbytitle('Employee Master')/items?$filter=M365UPN eq '${upn}'&$top=1`;
+  const url = `${CONFIG.crdSite}/_api/web/lists/getbytitle('Employee Master')/items?$filter=M365_x0020_UPN eq '${upn}'&$top=1`;
   const r = await fetch(url, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
   });
-  if (!r.ok) {
-    const text = await r.text();
-    console.error('Employee Master error:', r.status, text);
-    throw new Error(`SP GET failed: ${r.status}`);
-  }
+  if (!r.ok) throw new Error(`SP GET failed: ${r.status}`);
   const data = await r.json();
-  const emp = data.value?.[0] || null;
-  console.log('Employee row:', emp); // shows ALL field names
-  return emp;
+  return data.value?.[0] || null;
 }
 
 async function resolveManagerName(managerEmpNo) {
   if (!managerEmpNo) return '';
-  const items = await spGet(CONFIG.crdSite, 'Employee Master', `EmpNo eq '${managerEmpNo}'`);
-  return items[0]?.FullName || `EmpNo ${managerEmpNo}`;
+  const token = await getSpToken();
+  const url = `${CONFIG.crdSite}/_api/web/lists/getbytitle('Employee Master')/items?$filter=Employee_x0020_Number eq '${managerEmpNo}'&$top=1`;
+  const r = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+  });
+  if (!r.ok) return `EmpNo ${managerEmpNo}`;
+  const data = await r.json();
+  return data.value?.[0]?.Full_x0020_Name || `EmpNo ${managerEmpNo}`;
 }
 
 async function loadCatalogue() {
