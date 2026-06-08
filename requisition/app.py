@@ -70,6 +70,16 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"]  = "*"
+    response.headers["Access-Control-Allow-Methods"] = "POST, GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    return response
+
+@app.route("/api/requisition", methods=["OPTIONS"])
+def requisition_options():
+    return Response("", status=200)
 
 def _cors(response: Response) -> Response:
     response.headers["Access-Control-Allow-Origin"]  = "*"
