@@ -17,7 +17,7 @@ Environment variables (set in Azure App Service Application Settings):
 
 All SharePoint writes use the cached delegated token (vnair@).
 Run the app once interactively to prime the cache.
-# Deployment: 2026-06-08-v4
+# Deployment: 2026-06-08-v5
 """
 
 import os
@@ -729,7 +729,7 @@ def sp_get_items(site: str, list_name: str, filter_query: str = "") -> list:
     token = _get_sp_token()
     headers = {
         "Authorization": f"Bearer {token}",
-        "Accept": "application/json",
+        "Accept": "application/json;odata=verbose",
     }
     url = (
         f"{site}/_api/web/lists/getbytitle"
@@ -743,8 +743,9 @@ def sp_get_items(site: str, list_name: str, filter_query: str = "") -> list:
         r = requests.get(url, headers=headers)
         r.raise_for_status()
         data = r.json()
-        items.extend(data.get("value", []))
-        url = data.get("@odata.nextLink")
+        results = data.get("d", {}).get("results", data.get("value", []))
+        items.extend(results)
+        url = data.get("d", {}).get("__next", data.get("@odata.nextLink"))
     return items
 
 
@@ -752,8 +753,8 @@ def sp_create_item(site: str, list_name: str, fields: dict) -> dict:
     token = _get_sp_token()
     headers = {
         "Authorization": f"Bearer {token}",
-        "Accept": "application/json",
-        "Content-Type": "application/json",
+        "Accept": "application/json;odata=verbose",
+        "Content-Type": "application/json;odata=verbose",
     }
     meta_url = (
         f"{site}/_api/web/lists/getbytitle"
@@ -761,7 +762,7 @@ def sp_create_item(site: str, list_name: str, fields: dict) -> dict:
     )
     meta_r = requests.get(meta_url, headers=headers)
     meta_r.raise_for_status()
-    entity_type = meta_r.json().get("ListItemEntityTypeFullName", "SP.Data.ListItem")
+    entity_type = meta_r.json()["d"].get("ListItemEntityTypeFullName", "SP.Data.ListItem")
 
     body = {"__metadata": {"type": entity_type}, **fields}
     url = (
@@ -773,21 +774,19 @@ def sp_create_item(site: str, list_name: str, fields: dict) -> dict:
     if not r.ok:
         logger.error(f"SP create_item failed {r.status_code} on {list_name}: {r.text[:500]}")
     r.raise_for_status()
-    return r.json()
+    return r.json().get("d", r.json())
 
 
 def sp_update_item(site: str, list_name: str, item_id: int, fields: dict):
     token = _get_sp_token()
+    odata_headers = {"Authorization": f"Bearer {token}", "Accept": "application/json;odata=verbose"}
     meta_url = (
         f"{site}/_api/web/lists/getbytitle"
         f"('{urllib.parse.quote(list_name)}')?$select=ListItemEntityTypeFullName"
     )
-    meta_r = requests.get(
-        meta_url,
-        headers={"Authorization": f"Bearer {token}", "Accept": "application/json"}
-    )
+    meta_r = requests.get(meta_url, headers=odata_headers)
     meta_r.raise_for_status()
-    entity_type = meta_r.json().get("ListItemEntityTypeFullName", "SP.Data.ListItem")
+    entity_type = meta_r.json()["d"].get("ListItemEntityTypeFullName", "SP.Data.ListItem")
 
     body = {"__metadata": {"type": entity_type}, **fields}
     url = (
@@ -796,8 +795,8 @@ def sp_update_item(site: str, list_name: str, item_id: int, fields: dict):
     )
     headers = {
         "Authorization": f"Bearer {token}",
-        "Accept": "application/json",
-        "Content-Type": "application/json",
+        "Accept": "application/json;odata=verbose",
+        "Content-Type": "application/json;odata=verbose",
         "IF-MATCH": "*",
         "X-HTTP-Method": "MERGE",
         "X-RequestDigest": _get_request_digest(site, token),
@@ -811,10 +810,10 @@ def sp_update_item(site: str, list_name: str, item_id: int, fields: dict):
 def _get_request_digest(site: str, token: str) -> str:
     r = requests.post(
         f"{site}/_api/contextinfo",
-        headers={"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/json;odata=verbose"}
     )
     r.raise_for_status()
-    return r.json()["FormDigestValue"]
+    return r.json()["d"]["GetContextWebInformation"]["FormDigestValue"]
 
 
 def load_config() -> dict:
