@@ -47,11 +47,15 @@ jobs:
         run: |
           unzip -l app.zip | head -30
           
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID_FUNCTIONS }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_7A43C0C109504E8A9F6058768EBCD910 }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID_FUNCTIONS }}
+
       - name: Deploy to Azure Web App
-        run: |
-          az webapp deploy \
-            --resource-group rg-macrodyne-it-tools \
-            --name macrodyne-requisition \
-            --src-path app.zip \
-            --type zip \
-            --async false
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          package: app.zip
