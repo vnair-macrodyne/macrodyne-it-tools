@@ -723,8 +723,18 @@ async function spGet(site, listName, filter) {
 }
 
 async function resolveEmployee(upn) {
-  const items = await spGet(CONFIG.crdSite, 'Employee Master', `M365UPN eq '${upn}'`);
-  return items[0] || null;
+  const token = await getSpToken();
+  const url = `${CONFIG.crdSite}/_api/web/lists/getbytitle('Employee Master')/items?$filter=M365UPN eq '${encodeURIComponent(upn)}'&$select=EmpNo,FullName,Department,ManagerEmpNo,RoleCode,M365UPN&$top=1`;
+  const r = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+  });
+  if (!r.ok) {
+    const text = await r.text();
+    console.error('Employee Master error:', r.status, text);
+    throw new Error(`SP GET failed: ${r.status}`);
+  }
+  const data = await r.json();
+  return data.value?.[0] || null;
 }
 
 async function resolveManagerName(managerEmpNo) {
@@ -734,8 +744,19 @@ async function resolveManagerName(managerEmpNo) {
 }
 
 async function loadCatalogue() {
-  const items = await spGet(CONFIG.spSite, 'Requisition Items Catalogue', `Active eq 1`);
-  return items.sort((a,b) => (a.SortOrder||999) - (b.SortOrder||999));
+  const token = await getSpToken();
+  const url = `${CONFIG.spSite}/_api/web/lists/getbytitle('Requisition Items Catalogue')/items?$select=Title,ItemName,ItemCode,SuggestedURLs,SortOrder&$top=100`;
+  const r = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+  });
+  if (!r.ok) {
+    const text = await r.text();
+    console.error('Catalogue error:', r.status, text);
+    return [];
+  }
+  const data = await r.json();
+  console.log('Catalogue rows:', data.value);
+  return (data.value || []).sort((a,b) => (a.SortOrder||999) - (b.SortOrder||999));
 }
 
 // ── LINE ITEMS ───────────────────────────────────────────────────────────────
