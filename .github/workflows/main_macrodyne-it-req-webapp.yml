@@ -31,7 +31,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install dependencies into package folder
+      - name: Install dependencies
         run: |
           pushd ${{ env.PACKAGE_PATH }}
           pip install -r requirements.txt --target=".python_packages/lib/site-packages"
@@ -40,19 +40,13 @@ jobs:
       - name: Zip package
         run: |
           pushd ${{ env.PACKAGE_PATH }}
-          zip -r ../app.zip . \
-            --exclude "*.pyc" \
-            --exclude "__pycache__/*" \
-            --exclude "local.settings.json"
+          zip -r ../app.zip .
           popd
 
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID_FUNCTIONS }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_7A43C0C109504E8A9F6058768EBCD910 }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID_FUNCTIONS }}
-
+      - name: Verify zip contents
+        run: |
+          unzip -l app.zip | head -30
+          
       - name: Deploy to Azure Web App
         run: |
           az webapp deploy \
