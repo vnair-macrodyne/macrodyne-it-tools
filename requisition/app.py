@@ -17,6 +17,7 @@ Environment variables (set in Azure App Service Application Settings):
 
 All SharePoint writes use the cached delegated token (vnair@).
 Run the app once interactively to prime the cache.
+# Deployment: 2026-06-08-v2
 """
 
 import os
