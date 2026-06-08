@@ -17,7 +17,7 @@ Environment variables (set in Azure App Service Application Settings):
 
 All SharePoint writes use the cached delegated token (vnair@).
 Run the app once interactively to prime the cache.
-# Deployment: 2026-06-08-v5
+# Deployment: 2026-06-08-v6
 """
 
 import os
@@ -53,12 +53,13 @@ REQ_SITE  = "https://macrodyne.sharepoint.com/sites/Requisitions"
 CRD_SITE  = "https://macrodyne.sharepoint.com/sites/CorporateReferenceData"
 
 # SharePoint list names
-LIST_CONFIG   = "Requisition Config"
-LIST_ROLES    = "Requisition Roles"
-LIST_REQ      = "Requisitions"
-LIST_LINES    = "Requisition Lines"
-LIST_HISTORY  = "Requisition Status History"
-LIST_EMPLOYEE = "Employee Master"
+LIST_CONFIG     = "Requisition Config"
+LIST_ROLES      = "Requisition Roles"
+LIST_REQ        = "Requisitions"
+LIST_LINES      = "Requisition Lines"
+LIST_HISTORY    = "Requisition Status History"
+LIST_CATALOGUE  = "Requisition Items Catalogue"
+LIST_EMPLOYEE   = "Employee Master"
 
 # Token expiry for approval links (hours)
 APPROVAL_TOKEN_EXPIRY_HOURS = 72
@@ -89,8 +90,6 @@ def health():
 
 @app.route("/api/requisition", methods=["POST", "OPTIONS"])
 def requisition_handler():
-    """Main entry point — receives JSON payload from HTML form."""
-
     if request.method == "OPTIONS":
         return Response("", status=200)
 
@@ -135,8 +134,6 @@ def requisition_handler():
 
 @app.route("/api/approve", methods=["GET"])
 def approve_handler():
-    """Approval link handler — called when manager/AP clicks email link."""
-
     token_str = request.args.get("token", "")
     action    = request.args.get("action", "")
     comment   = request.args.get("comment", "")
@@ -252,8 +249,7 @@ def handle_submit(payload: dict) -> dict:
 
     now = datetime.datetime.utcnow().isoformat() + "Z"
 
-    # Create row first with placeholder — SP assigns an atomic integer ID.
-    # RequisitionID is derived from that ID to eliminate race conditions.
+    # Create Requisition row — SP assigns atomic integer ID
     req_row = {
         "Title":                  "PENDING",
         "Status":                 initial_status,
@@ -270,27 +266,37 @@ def handle_submit(payload: dict) -> dict:
     sp_item_id = created["ID"]
     requisition_id = generate_requisition_id(sp_item_id)
 
-    # Update Title and RequisitionID with the real ID now that SP has assigned one
+    # Update Title with real RequisitionID
     sp_update_item(REQ_SITE, LIST_REQ, sp_item_id, {
         "Title": requisition_id,
     })
 
-    # FIX: sp_create_item call was incorrectly merged onto the closing brace line
+    # Create line items — RequisitionID and ItemCode are Lookup fields
     for i, item in enumerate(line_items, start=1):
+        item_code = item.get("itemCode", "OTHER")
         line_row = {
             "Title":             f"{requisition_id}-{i:02d}",
-            "RequisitionID":     requisition_id,
+            "RequisitionIDId":   sp_item_id,            # Lookup → integer SP ID
             "LineNumber":        i,
-            "ItemCode":          item.get("itemCode", "OTHER"),
             "ItemDescription":   item.get("itemDescription", ""),
             "Quantity":          item.get("quantity", 1),
             "UnitPriceEstimate": item.get("unitPriceEstimate", 0),
-            "ItemURL":           item.get("itemURL", ""),
         }
+        # ItemCode: Lookup — omit entirely for free-text OTHER items
+        if item_code and item_code != "OTHER":
+            cat_id = resolve_catalogue_id(item_code)
+            if cat_id:
+                line_row["ItemCodeId"] = cat_id         # Lookup → integer SP ID
+        # ItemURL: URL field — requires object format, omit if empty
+        item_url = item.get("itemURL", "").strip()
+        if item_url:
+            line_row["ItemURL"] = {"Url": item_url, "Description": item_url}
+
         sp_create_item(REQ_SITE, LIST_LINES, line_row)
 
     write_history(
         requisition_id=requisition_id,
+        sp_req_id=sp_item_id,
         from_status="Draft",
         to_status=initial_status,
         actor_emp_no=requestor_emp_no,
@@ -348,17 +354,18 @@ def handle_approval(
     if current_status != expected_status:
         return {"success": False, "currentStatus": current_status}
 
+    sp_req_id = req["ID"]
     now = datetime.datetime.utcnow().isoformat() + "Z"
 
     if current_status == "PendingManager":
-        sp_update_item(REQ_SITE, LIST_REQ, req["ID"], {
-            "Status":                 "PendingAP",
-            "ManagerApprovedUtc":     now,
-            "ManagerApproverEmpNo":   actor_emp_no,
-            "ManagerApproverEmpNo0":  actor_name,
-            "ManagerComment":         comment,
+        sp_update_item(REQ_SITE, LIST_REQ, sp_req_id, {
+            "Status":               "PendingAP",
+            "ManagerApprovedUtc":   now,
+            "ManagerApproverEmpNo": actor_emp_no,
+            "ManagerApproverEmpNo0": actor_name,        # internal name of ManagerApproverEmpName
+            "ManagerComment":       comment,
         })
-        write_history(requisition_id, "PendingManager", "PendingAP",
+        write_history(requisition_id, sp_req_id, "PendingManager", "PendingAP",
                       actor_emp_no, comment or "Approved by manager")
 
         ap_upn = _resolve_ap_upn(req["RequestorEmpNo"], roles)
@@ -377,13 +384,13 @@ def handle_approval(
         )
 
     elif current_status == "PendingAP":
-        sp_update_item(REQ_SITE, LIST_REQ, req["ID"], {
+        sp_update_item(REQ_SITE, LIST_REQ, sp_req_id, {
             "Status":          "ApprovedPendingPurchase",
             "APApprovedUtc":   now,
             "APApproverEmpNo": actor_emp_no,
             "APComment":       comment,
         })
-        write_history(requisition_id, "PendingAP", "ApprovedPendingPurchase",
+        write_history(requisition_id, sp_req_id, "PendingAP", "ApprovedPendingPurchase",
                       actor_emp_no, comment or "Approved by AP")
 
         fulfill_upn = _resolve_fulfill_upn(req["RequestorEmpNo"], roles)
@@ -418,17 +425,18 @@ def handle_rejection(
     if current_status != expected_status:
         return {"success": False, "currentStatus": current_status}
 
+    sp_req_id = req["ID"]
     now = datetime.datetime.utcnow().isoformat() + "Z"
     terminal_status = (
         "RejectedByManager" if current_status == "PendingManager"
         else "RejectedByAP"
     )
 
-    sp_update_item(REQ_SITE, LIST_REQ, req["ID"], {
+    sp_update_item(REQ_SITE, LIST_REQ, sp_req_id, {
         "Status":          terminal_status,
         "RejectionReason": comment,
     })
-    write_history(requisition_id, current_status, terminal_status,
+    write_history(requisition_id, sp_req_id, current_status, terminal_status,
                   actor_emp_no, comment or "Rejected")
 
     cc = req.get("ManagerUPN", "") if current_status == "PendingAP" else ""
@@ -461,11 +469,12 @@ def handle_cancel(payload: dict) -> dict:
     if current_status not in cancellable:
         return {"success": False, "error": "This requisition can no longer be cancelled."}
 
-    sp_update_item(REQ_SITE, LIST_REQ, req["ID"], {
+    sp_req_id = req["ID"]
+    sp_update_item(REQ_SITE, LIST_REQ, sp_req_id, {
         "Status":             "CancelledByRequestor",
         "CancellationReason": comment,
     })
-    write_history(requisition_id, current_status, "CancelledByRequestor",
+    write_history(requisition_id, sp_req_id, current_status, "CancelledByRequestor",
                   actor_emp_no, comment or "Cancelled by requestor")
 
     if current_status == "PendingManager":
@@ -478,7 +487,7 @@ def handle_cancel(payload: dict) -> dict:
         )
     elif current_status in {"PendingAP", "ApprovedPendingPurchase"}:
         roles = load_roles()
-        ap_upn = _resolve_ap_upn(req["RequestorEmpNo"], roles)
+        ap_upn      = _resolve_ap_upn(req["RequestorEmpNo"], roles)
         fulfill_upn = _resolve_fulfill_upn(req["RequestorEmpNo"], roles)
         send_email(
             sender=notification_sender,
@@ -506,14 +515,15 @@ def handle_mark_ordered(payload: dict) -> dict:
     if not req:
         return {"success": False, "error": "Requisition not found"}
 
+    sp_req_id = req["ID"]
     now = datetime.datetime.utcnow().isoformat() + "Z"
-    sp_update_item(REQ_SITE, LIST_REQ, req["ID"], {
+    sp_update_item(REQ_SITE, LIST_REQ, sp_req_id, {
         "Status":         "Ordered",
         "OrderedUtc":     now,
         "OrderedByEmpNo": actor_emp_no,
         "PaymentMode":    payment_mode,
     })
-    write_history(requisition_id, "ApprovedPendingPurchase", "Ordered",
+    write_history(requisition_id, sp_req_id, "ApprovedPendingPurchase", "Ordered",
                   actor_emp_no, f"Ordered via {payment_mode}")
 
     for update in line_updates:
@@ -545,14 +555,14 @@ def handle_mark_received(payload: dict) -> dict:
     if not req:
         return {"success": False, "error": "Requisition not found"}
 
+    sp_req_id = req["ID"]
     now = datetime.datetime.utcnow().isoformat() + "Z"
-    # FIX: was "Received" — correct SP Choice value is "ReceivedByPurchaser"
-    sp_update_item(REQ_SITE, LIST_REQ, req["ID"], {
+    sp_update_item(REQ_SITE, LIST_REQ, sp_req_id, {
         "Status":          "ReceivedByPurchaser",
         "ReceivedUtc":     now,
         "ReceivedByEmpNo": actor_emp_no,
     })
-    write_history(requisition_id, "Ordered", "ReceivedByPurchaser",
+    write_history(requisition_id, sp_req_id, "Ordered", "ReceivedByPurchaser",
                   actor_emp_no, "Item received at reception")
 
     receipt_days = config.get("ReceiptConfirmDays", "5")
@@ -580,16 +590,16 @@ def handle_confirm(payload: dict) -> dict:
     if not req:
         return {"success": False, "error": "Requisition not found"}
 
+    sp_req_id = req["ID"]
     now = datetime.datetime.utcnow().isoformat() + "Z"
-    sp_update_item(REQ_SITE, LIST_REQ, req["ID"], {
+    sp_update_item(REQ_SITE, LIST_REQ, sp_req_id, {
         "Status":       "Closed",
         "ConfirmedUtc": now,
         "ClosedUtc":    now,
     })
-    # FIX: from_status was "Received" — correct SP Choice value is "ReceivedByPurchaser"
-    write_history(requisition_id, "ReceivedByPurchaser", "ConfirmedByRequestor",
+    write_history(requisition_id, sp_req_id, "ReceivedByPurchaser", "ConfirmedByRequestor",
                   actor_emp_no, "Requestor confirmed receipt")
-    write_history(requisition_id, "ConfirmedByRequestor", "Closed",
+    write_history(requisition_id, sp_req_id, "ConfirmedByRequestor", "Closed",
                   actor_emp_no, "Auto-closed on receipt confirmation")
 
     fulfill_upn = _resolve_fulfill_upn(req["RequestorEmpNo"], roles)
@@ -618,19 +628,20 @@ def handle_reject_at_purchase(payload: dict) -> dict:
     if not req:
         return {"success": False, "error": "Requisition not found"}
 
+    sp_req_id = req["ID"]
     now = datetime.datetime.utcnow().isoformat() + "Z"
-    sp_update_item(REQ_SITE, LIST_REQ, req["ID"], {
+    sp_update_item(REQ_SITE, LIST_REQ, sp_req_id, {
         "Status":                    "RejectedAtPurchase",
         "RejectedAtPurchaseUtc":     now,
         "RejectedAtPurchaseByEmpNo": actor_emp_no,
         "RejectionReason":           comment,
     })
-    write_history(requisition_id, "ApprovedPendingPurchase", "RejectedAtPurchase",
+    write_history(requisition_id, sp_req_id, "ApprovedPendingPurchase", "RejectedAtPurchase",
                   actor_emp_no, comment or "Rejected at purchase")
 
-    ap_upn = _resolve_ap_upn(req["RequestorEmpNo"], roles)
+    ap_upn   = _resolve_ap_upn(req["RequestorEmpNo"], roles)
     cc_parts = [req.get("ManagerUPN", ""), ap_upn]
-    cc = ",".join(p for p in cc_parts if p)
+    cc       = ",".join(p for p in cc_parts if p)
 
     send_email(
         sender=notification_sender,
@@ -653,14 +664,15 @@ def handle_close(payload: dict) -> dict:
     if not req:
         return {"success": False, "error": "Requisition not found"}
 
-    now = datetime.datetime.utcnow().isoformat() + "Z"
+    sp_req_id      = req["ID"]
     current_status = req.get("Status", "")
+    now = datetime.datetime.utcnow().isoformat() + "Z"
 
-    sp_update_item(REQ_SITE, LIST_REQ, req["ID"], {
+    sp_update_item(REQ_SITE, LIST_REQ, sp_req_id, {
         "Status":    "Closed",
         "ClosedUtc": now,
     })
-    write_history(requisition_id, current_status, "Closed",
+    write_history(requisition_id, sp_req_id, current_status, "Closed",
                   actor_emp_no, comment or "Manually closed by AP")
     return {"success": True}
 
@@ -779,7 +791,10 @@ def sp_create_item(site: str, list_name: str, fields: dict) -> dict:
 
 def sp_update_item(site: str, list_name: str, item_id: int, fields: dict):
     token = _get_sp_token()
-    odata_headers = {"Authorization": f"Bearer {token}", "Accept": "application/json;odata=verbose"}
+    odata_headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json;odata=verbose",
+    }
     meta_url = (
         f"{site}/_api/web/lists/getbytitle"
         f"('{urllib.parse.quote(list_name)}')?$select=ListItemEntityTypeFullName"
@@ -794,12 +809,12 @@ def sp_update_item(site: str, list_name: str, item_id: int, fields: dict):
         f"('{urllib.parse.quote(list_name)}')/items({item_id})"
     )
     headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/json;odata=verbose",
-        "Content-Type": "application/json;odata=verbose",
-        "IF-MATCH": "*",
-        "X-HTTP-Method": "MERGE",
-        "X-RequestDigest": _get_request_digest(site, token),
+        "Authorization":    f"Bearer {token}",
+        "Accept":           "application/json;odata=verbose",
+        "Content-Type":     "application/json;odata=verbose",
+        "IF-MATCH":         "*",
+        "X-HTTP-Method":    "MERGE",
+        "X-RequestDigest":  _get_request_digest(site, token),
     }
     r = requests.post(url, headers=headers, json=body)
     if not r.ok:
@@ -810,7 +825,10 @@ def sp_update_item(site: str, list_name: str, item_id: int, fields: dict):
 def _get_request_digest(site: str, token: str) -> str:
     r = requests.post(
         f"{site}/_api/contextinfo",
-        headers={"Authorization": f"Bearer {token}", "Accept": "application/json;odata=verbose"}
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json;odata=verbose",
+        }
     )
     r.raise_for_status()
     return r.json()["d"]["GetContextWebInformation"]["FormDigestValue"]
@@ -818,43 +836,52 @@ def _get_request_digest(site: str, token: str) -> str:
 
 def load_config() -> dict:
     items = sp_get_items(REQ_SITE, LIST_CONFIG)
-    return {item.get("ConfigKey", ""): item.get("ConfigValue", "") for item in items}
+    # Title column displays as "ConfigKey" — internal name is Title
+    return {item.get("Title", ""): item.get("ConfigValue", "") for item in items}
 
 
 def load_roles() -> dict:
     items = sp_get_items(REQ_SITE, LIST_ROLES)
+    # Title column displays as "RoleCode" — keyed by RoleCode value
     return {item.get("Title", ""): item for item in items}
 
 
 def get_requisition(requisition_id: str) -> dict | None:
+    # RequisitionID is a real Text column on Requisitions list — plain filter works
     items = sp_get_items(REQ_SITE, LIST_REQ, f"RequisitionID eq '{requisition_id}'")
     return items[0] if items else None
 
 
 def get_line_items(requisition_id: str) -> list:
-    return sp_get_items(REQ_SITE, LIST_LINES, f"RequisitionID eq '{requisition_id}'")
+    # RequisitionID on Lines is a Lookup — must use /Title syntax
+    return sp_get_items(
+        REQ_SITE, LIST_LINES,
+        f"RequisitionID/Title eq '{requisition_id}'"
+    )
 
 
 def write_history(
-    requisition_id, from_status, to_status, actor_emp_no, comment=""
+    requisition_id: str,
+    sp_req_id: int,
+    from_status: str,
+    to_status: str,
+    actor_emp_no: str,
+    comment: str = ""
 ):
+    """Write one status-transition row to Requisition Status History.
+    sp_req_id is the SP integer ID of the parent Requisition row (required for Lookup field).
+    """
     sp_create_item(REQ_SITE, LIST_HISTORY, {
-        "Title":         f"{requisition_id}:{from_status}→{to_status}",
-        "RequisitionID": requisition_id,
-        "FromStatus":    from_status,
-        "ToStatus":      to_status,
-        "TransitionUtc": datetime.datetime.utcnow().isoformat() + "Z",
-        "Comment":       comment,
+        "Title":            f"{requisition_id}:{from_status}→{to_status}",
+        "RequisitionIDId":  sp_req_id,              # Lookup → integer SP ID
+        "FromStatus":       from_status,
+        "ToStatus":         to_status,
+        "TransitionUtc":    datetime.datetime.utcnow().isoformat() + "Z",
+        "Comment":          comment,
     })
 
 
 def generate_requisition_id(sp_item_id: int) -> str:
-    """
-    Build RequisitionID from SharePoint's atomically-assigned integer ID.
-    Uses SP's own ID to avoid race conditions on concurrent submissions.
-    Format: REQ-YYYY-NNNN where NNNN is the SP item ID (zero-padded to 4 digits).
-    Note: sequence does not reset on Jan 1 — it is globally unique and monotonic.
-    """
     year = datetime.datetime.utcnow().year
     return f"REQ-{year}-{sp_item_id:04d}"
 
@@ -867,6 +894,14 @@ def resolve_upn(emp_no: str) -> str:
         f"Employee_x0020_Number eq '{emp_no}'"
     )
     return items[0].get("M365_x0020_UPN", "") if items else ""
+
+
+def resolve_catalogue_id(item_code: str) -> int | None:
+    """Return the SP integer ID of a catalogue row by ItemCode (stored in Title column)."""
+    if not item_code or item_code == "OTHER":
+        return None
+    items = sp_get_items(REQ_SITE, LIST_CATALOGUE, f"Title eq '{item_code}'")
+    return items[0]["ID"] if items else None
 
 
 # ── Routing helpers ────────────────────────────────────────────────────────────
@@ -902,7 +937,7 @@ def send_email(sender: str, to: str, cc: str, subject: str, body: str):
     token = _get_graph_token()
     headers = {
         "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
+        "Content-Type":  "application/json",
     }
     to_recipients = [{"emailAddress": {"address": a.strip()}}
                      for a in to.split(",") if a.strip()]
@@ -1034,7 +1069,7 @@ def _send_ap_approval_email(
     ap_upn, notification_sender, manager_skipped=False
 ):
     roles = load_roles()
-    ap_role = roles.get("AP-Approver", {})
+    ap_role   = roles.get("AP-Approver", {})
     ap_emp_no = str(ap_role.get("PrimaryEmpNo", ""))
 
     approve_url, reject_url = _approval_links(
