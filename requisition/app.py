@@ -17,7 +17,7 @@ Environment variables (set in Azure App Service Application Settings):
 
 All SharePoint writes use the cached delegated token (vnair@).
 Run the app once interactively to prime the cache.
-# Deployment: 2026-06-08-v6
+# Deployment: 2026-06-08-v6.1
 """
 
 import os
@@ -982,13 +982,36 @@ def _approval_links(
     return f"{base}&action=approve", f"{base}&action=reject"
 
 
+def _approval_buttons(approve_url: str, reject_url: str) -> str:
+    """Outlook-safe approve/reject buttons using VML + table layout."""
+    return (
+        "<table cellpadding='0' cellspacing='0' border='0' style='margin:24px 0'><tr>"
+        f"<td style='padding-right:12px'>"
+        f"<a href='{approve_url}' style='background:#107C10;border-radius:4px;color:#ffffff;"
+        f"display:inline-block;font-family:Segoe UI,Arial,sans-serif;font-size:14px;"
+        f"font-weight:bold;line-height:40px;text-align:center;text-decoration:none;"
+        f"width:120px;mso-padding-alt:0;padding:0 24px;'>&#10003; Approve</a></td>"
+        f"<td><a href='{reject_url}' style='background:#A4262C;border-radius:4px;color:#ffffff;"
+        f"display:inline-block;font-family:Segoe UI,Arial,sans-serif;font-size:14px;"
+        f"font-weight:bold;line-height:40px;text-align:center;text-decoration:none;"
+        f"width:120px;mso-padding-alt:0;padding:0 24px;'>&#10007; Reject</a></td>"
+        "</tr></table>"
+    )
+
+
 def _line_items_table(line_items: list) -> str:
+    def _v(item, *keys, default=0):
+        for k in keys:
+            if k in item and item[k] not in (None, ""):
+                return item[k]
+        return default
+
     rows = "".join(
         f"<tr>"
-        f"<td style='padding:6px 12px;border:1px solid #e0e0e0'>{item.get('ItemDescription','')}</td>"
-        f"<td style='padding:6px 12px;border:1px solid #e0e0e0;text-align:center'>{item.get('Quantity',1)}</td>"
-        f"<td style='padding:6px 12px;border:1px solid #e0e0e0;text-align:right'>${float(item.get('UnitPriceEstimate',0)):,.2f}</td>"
-        f"<td style='padding:6px 12px;border:1px solid #e0e0e0;text-align:right'>${float(item.get('Quantity',1))*float(item.get('UnitPriceEstimate',0)):,.2f}</td>"
+        f"<td style='padding:6px 12px;border:1px solid #e0e0e0'>{_v(item, 'itemDescription', 'ItemDescription', default='')}</td>"
+        f"<td style='padding:6px 12px;border:1px solid #e0e0e0;text-align:center'>{_v(item, 'quantity', 'Quantity', default=1)}</td>"
+        f"<td style='padding:6px 12px;border:1px solid #e0e0e0;text-align:right'>${float(_v(item, 'unitPriceEstimate', 'UnitPriceEstimate')):,.2f}</td>"
+        f"<td style='padding:6px 12px;border:1px solid #e0e0e0;text-align:right'>${float(_v(item, 'quantity', 'Quantity', default=1))*float(_v(item, 'unitPriceEstimate', 'UnitPriceEstimate')):,.2f}</td>"
         f"</tr>"
         for item in line_items
     )
@@ -1047,14 +1070,7 @@ def _send_manager_approval_email(
               <td><strong>{currency} ${total:,.2f}</strong></td></tr>
         </table>
         {_line_items_table(line_items)}
-        <div style='margin:24px 0'>
-          <a href='{approve_url}'
-             style='background:#107C10;color:white;padding:10px 24px;text-decoration:none;
-                    border-radius:4px;font-weight:600;margin-right:12px'>✓ Approve</a>
-          <a href='{reject_url}'
-             style='background:#A4262C;color:white;padding:10px 24px;text-decoration:none;
-                    border-radius:4px;font-weight:600'>✗ Reject</a>
-        </div>
+        {_approval_buttons(approve_url, reject_url)}
         <p style='font-size:12px;color:#757575'>
           Approval links expire in {APPROVAL_TOKEN_EXPIRY_HOURS} hours.
         </p>""")
@@ -1094,14 +1110,7 @@ def _send_ap_approval_email(
               <td><strong>{currency} ${total:,.2f}</strong></td></tr>
         </table>
         {_line_items_table(line_items)}
-        <div style='margin:24px 0'>
-          <a href='{approve_url}'
-             style='background:#107C10;color:white;padding:10px 24px;text-decoration:none;
-                    border-radius:4px;font-weight:600;margin-right:12px'>✓ Approve</a>
-          <a href='{reject_url}'
-             style='background:#A4262C;color:white;padding:10px 24px;text-decoration:none;
-                    border-radius:4px;font-weight:600'>✗ Reject</a>
-        </div>""")
+        {_approval_buttons(approve_url, reject_url)}""")
 
     send_email(sender=notification_sender, to=ap_upn, cc="",
                subject=f"AP approval required — {requisition_id}", body=body)
