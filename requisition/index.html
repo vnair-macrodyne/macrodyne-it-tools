@@ -675,23 +675,25 @@ async function onSignedIn() {
   try {
     const emp = await resolveEmployee(upn);
     currentUser = {
-        upn,
-        empNo:        emp?.Employee_x0020_Number || '',
-        fullName:     emp?.Full_x0020_Name       || name,
-        dept:         emp?.Department_x0020_Name || '',
-        managerEmpNo: emp?.ManagerEmpNo          || '',
-        managerName:  '',
-        roleCode:     emp?.Role_x0020_Code       || '',
-      };
-
-      // Resolve manager name if manager exists
-      if (currentUser.managerEmpNo) {
-        try {
-          currentUser.managerName = await resolveManagerName(currentUser.managerEmpNo);
-        } catch(e) {
-          currentUser.managerName = `EmpNo ${currentUser.managerEmpNo}`;
-        }
+      upn,
+      empNo:        emp?.Employee_x0020_Number || '',
+      fullName:     emp?.Full_x0020_Name       || name,
+      dept:         emp?.Department_x0020_Name || '',
+      managerEmpNo: emp?.ManagerEmpNo          || '',
+      managerName:  '',
+      roleCode:     emp?.Role_x0020_Code       || '',
+    };
+    if (currentUser.managerEmpNo) {
+      try {
+        currentUser.managerName = await resolveManagerName(currentUser.managerEmpNo);
+      } catch(e) {
+        currentUser.managerName = `EmpNo ${currentUser.managerEmpNo}`;
       }
+    }
+  } catch(e) {
+    currentUser = { upn, empNo: '', fullName: name, dept: '', managerEmpNo: '', managerName: '' };
+    console.warn('Employee Master lookup failed:', e);
+  }
 
   // Populate requestor info panel
   document.getElementById('info-name').textContent    = currentUser.fullName;
