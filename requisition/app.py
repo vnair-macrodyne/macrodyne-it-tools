@@ -80,6 +80,7 @@ def _cors(response: Response) -> Response:
 
 @app.route("/health", methods=["GET"])
 def health():
+    
     return jsonify({"status": "ok"})
 
 
