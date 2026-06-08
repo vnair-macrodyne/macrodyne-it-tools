@@ -855,9 +855,13 @@ def generate_requisition_id(sp_item_id: int) -> str:
 def resolve_upn(emp_no: str) -> str:
     if not emp_no:
         return ""
-    items = sp_get_items(CRD_SITE, LIST_EMPLOYEE, f"EmpNo eq '{emp_no}'")
-    return items[0].get("M365UPN", "") if items else ""
-
+    items = sp_get_items(
+        CRD_SITE, LIST_EMPLOYEE,
+        f"Employee_x0020_Number eq '{emp_no}'"
+    )
+    if not items:
+        return ""
+    return items[0].get("M365_x0020_UPN", "") if items else ""
 
 # ── Routing helpers ────────────────────────────────────────────────────────────
 
