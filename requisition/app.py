@@ -253,7 +253,6 @@ def handle_submit(payload: dict) -> dict:
     # RequisitionID is derived from that ID to eliminate race conditions.
     req_row = {
         "Title":                "PENDING",
-        "RequisitionID":        "PENDING",
         "Status":               initial_status,
         "RequestorEmpNo":       requestor_emp_no,
         "RequestorUPN":         requestor_upn,
@@ -271,22 +270,19 @@ def handle_submit(payload: dict) -> dict:
 
     # Update with the real RequisitionID now that we have the SP integer ID
     sp_update_item(REQ_SITE, LIST_REQ, sp_item_id, {
-        "Title":         requisition_id,
-        "RequisitionID": requisition_id,
+        "Title": requisition_id,
     })
-
     for i, item in enumerate(line_items, start=1):
-        line_row = {
-            "Title":             f"{requisition_id}-{i:02d}",
-            "RequisitionID":     requisition_id,
-            "LineNumber":        i,
-            "ItemCode":          item.get("itemCode", "OTHER"),
-            "ItemDescription":   item.get("itemDescription", ""),
-            "Quantity":          item.get("quantity", 1),
-            "UnitPriceEstimate": item.get("unitPriceEstimate", 0),
-            "ItemURL":           item.get("itemURL", ""),
-        }
-        sp_create_item(REQ_SITE, LIST_LINES, line_row)
+      line_row = {
+          "Title":             f"{requisition_id}-{i:02d}",
+          "RequisitionID":     requisition_id,
+          "LineNumber":        i,
+          "ItemCode":          item.get("itemCode", "OTHER"),
+          "ItemDescription":   item.get("itemDescription", ""),
+          "Quantity":          item.get("quantity", 1),
+          "UnitPriceEstimate": item.get("unitPriceEstimate", 0),
+          "ItemURL":           item.get("itemURL", ""),
+      }        sp_create_item(REQ_SITE, LIST_LINES, line_row)
 
     write_history(
         requisition_id=requisition_id,
@@ -838,7 +834,6 @@ def write_history(
         "FromStatus":    from_status,
         "ToStatus":      to_status,
         "TransitionUtc": datetime.datetime.utcnow().isoformat() + "Z",
-        "ActorEmpNo":    actor_emp_no,
         "Comment":       comment,
     })
 
