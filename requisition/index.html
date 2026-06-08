@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Macrodyne — Purchase Requisition</title>
+  <script src="https://alcdn.msauth.net/browser/2.38.0/js/msal-browser.min.js"></script>
+  <style>
+    :root {
+      --blue:       #0063B1;
+      --blue-dark:  #004F8F;
+      --blue-light: #EBF3FB;
+      --blue-mid:   #C7DEF5;
+      --green:      #107C10;
+      --red:        #A4262C;
+      --amber:      #C19B00;
+      --text:       #1B1B1B;
+      --text-mid:   #4A4A4A;
+      --text-light: #767676;
+      --border:     #D0D0D0;
+      --bg:         #F4F6F9;
+      --white:      #FFFFFF;
+      --radius:     6px;
+      --shadow:     0 2px 8px rgba(0,0,0,.10);
+      --shadow-lg:  0 4px 20px rgba(0,0,0,.14);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: var(--blue);
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      height: 52px;
+      gap: 16px;
+    }
+    .header-logo {
+      color: white;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: .02em;
+    }
+    .header-sep { width: 1px; height: 24px; background: rgba(255,255,255,.3); }
+    .header-title { color: rgba(255,255,255,.85); font-size: 13px; }
+    .header-user {
+      margin-left: auto;
+      color: rgba(255,255,255,.85);
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .header-avatar {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: rgba(255,255,255,.2);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 600; color: white;
+    }
+
+    /* ── Auth screen ── */
+    #auth-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: calc(100vh - 52px);
+      padding: 24px;
+    }
+    .auth-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-lg);
+      padding: 40px;
+      max-width: 400px;
+      width: 100%;
+      text-align: center;
+    }
+    .auth-card h2 { font-size: 20px; margin-bottom: 8px; color: var(--blue); }
+    .auth-card p { color: var(--text-mid); font-size: 14px; margin-bottom: 24px; line-height: 1.5; }
+
+    /* ── Main layout ── */
+    #main-screen { display: none; }
+    .container { max-width: 760px; margin: 0 auto; padding: 24px 16px 80px; }
+
+    /* ── Page title ── */
+    .page-title {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--blue-dark);
+      margin-bottom: 4px;
+    }
+    .page-sub {
+      font-size: 13px;
+      color: var(--text-light);
+      margin-bottom: 24px;
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+    .card-header {
+      background: var(--blue-light);
+      border-bottom: 1px solid var(--blue-mid);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-header-icon {
+      width: 20px; height: 20px;
+      background: var(--blue);
+      border-radius: 3px;
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-size: 11px;
+    }
+    .card-header-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--blue-dark);
+    }
+    .card-body { padding: 20px; }
+
+    /* ── Requestor info ── */
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .info-item label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-light);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      margin-bottom: 4px;
+    }
+    .info-item span {
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    /* ── Form fields ── */
+    .field { margin-bottom: 16px; }
+    .field label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .field label .req { color: var(--red); margin-left: 2px; }
+    .field input,
+    .field textarea,
+    .field select {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 8px 12px;
+      font-size: 14px;
+      font-family: inherit;
+      color: var(--text);
+      background: var(--white);
+      transition: border-color .15s;
+      outline: none;
+    }
+    .field input:focus,
+    .field textarea:focus,
+    .field select:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 2px rgba(0,99,177,.15);
+    }
+    .field textarea { resize: vertical; min-height: 80px; }
+
+    /* ── Currency toggle ── */
+    .currency-toggle {
+      display: flex;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      width: fit-content;
+    }
+    .currency-toggle button {
+      padding: 8px 20px;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      background: var(--white);
+      color: var(--text-mid);
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .currency-toggle button.active {
+      background: var(--blue);
+      color: white;
+    }
+
+    /* ── Line items ── */
+    .line-items-header {
+      display: grid;
+      grid-template-columns: 1fr 180px 90px 90px 36px;
+      gap: 8px;
+      padding: 0 0 8px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 8px;
+    }
+    .line-items-header span {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-light);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    .line-item {
+      display: grid;
+      grid-template-columns: 1fr 180px 90px 90px 36px;
+      gap: 8px;
+      margin-bottom: 8px;
+      align-items: start;
+    }
+    .line-item input,
+    .line-item select {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 7px 10px;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--text);
+      background: var(--white);
+      outline: none;
+    }
+    .line-item input:focus,
+    .line-item select:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 2px rgba(0,99,177,.15);
+    }
+    .line-item .line-total {
+      padding: 7px 10px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      text-align: right;
+    }
+    .btn-remove {
+      width: 32px; height: 32px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--white);
+      color: var(--text-light);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+      transition: all .15s;
+      margin-top: 1px;
+    }
+    .btn-remove:hover { background: #FDE7E9; border-color: var(--red); color: var(--red); }
+
+    /* ── Add line button ── */
+    .btn-add-line {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+      background: transparent;
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .15s;
+      margin-top: 8px;
+    }
+    .btn-add-line:hover {
+      border-color: var(--blue);
+      background: var(--blue-light);
+    }
+
+    /* ── Total bar ── */
+    .total-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-radius: var(--radius);
+      margin-top: 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      transition: all .2s;
+    }
+    .total-bar.warn {
+      background: #FFF9E6;
+      border-color: var(--amber);
+    }
+    .total-bar.over {
+      background: #FDE7E9;
+      border-color: var(--red);
+    }
+    .total-label { font-size: 13px; color: var(--text-mid); }
+    .total-amount {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .total-bar.warn .total-amount { color: var(--amber); }
+    .total-bar.over .total-amount { color: var(--red); }
+    .cap-msg {
+      font-size: 12px;
+      margin-top: 6px;
+      display: none;
+    }
+    .cap-msg.show { display: block; }
+    .cap-msg.warn { color: var(--amber); }
+    .cap-msg.over { color: var(--red); }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      border: none;
+      transition: all .15s;
+    }
+    .btn-primary {
+      background: var(--blue);
+      color: white;
+    }
+    .btn-primary:hover { background: var(--blue-dark); }
+    .btn-primary:disabled {
+      background: var(--border);
+      color: var(--text-light);
+      cursor: not-allowed;
+    }
+    .btn-secondary {
+      background: var(--white);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: var(--bg); }
+
+    .form-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      margin-top: 8px;
+    }
+
+    /* ── Success screen ── */
+    #success-screen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: calc(100vh - 52px);
+      padding: 24px;
+    }
+    .success-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-lg);
+      padding: 40px;
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+    }
+    .success-icon {
+      width: 56px; height: 56px;
+      background: #DFF6DD;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 28px;
+      margin: 0 auto 20px;
+    }
+    .success-id {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--blue);
+      margin: 12px 0 8px;
+      font-family: 'Courier New', monospace;
+    }
+    .success-msg { font-size: 14px; color: var(--text-mid); line-height: 1.6; }
+
+    /* ── Error banner ── */
+    .error-banner {
+      background: #FDE7E9;
+      border: 1px solid #C50F1F;
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      font-size: 13px;
+      color: #C50F1F;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .error-banner.show { display: block; }
+
+    /* ── Loading spinner ── */
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid rgba(255,255,255,.4);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Responsive ── */
+    @media (max-width: 600px) {
+      .info-grid { grid-template-columns: 1fr; }
+      .line-items-header { display: none; }
+      .line-item {
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto auto auto;
+      }
+      .line-item select { grid-column: 1 / -1; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-logo">Macrodyne Technologies</div>
+  <div class="header-sep"></div>
+  <div class="header-title">Purchase Requisition</div>
+  <div class="header-user">
+    <div class="header-avatar" id="user-initials">–</div>
+    <span id="user-name-header"></span>
+  </div>
+</div>
+
+<!-- Auth screen -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <h2>Sign in required</h2>
+    <p>Please sign in with your Macrodyne Microsoft account to submit a purchase requisition.</p>
+    <button class="btn btn-primary" onclick="signIn()" style="width:100%;justify-content:center">
+      Sign in with Microsoft
+    </button>
+  </div>
+</div>
+
+<!-- Main form -->
+<div id="main-screen">
+  <div class="container">
+    <div class="page-title">New Purchase Requisition</div>
+    <div class="page-sub">For purchases up to CAD/USD $5,000. Larger purchases require a formal PO.</div>
+
+    <div class="error-banner" id="error-banner"></div>
+
+    <!-- Requestor info -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-header-icon">👤</div>
+        <div class="card-header-title">Requestor Information</div>
+      </div>
+      <div class="card-body">
+        <div class="info-grid">
+          <div class="info-item">
+            <label>Name</label>
+            <span id="info-name">—</span>
+          </div>
+          <div class="info-item">
+            <label>Department</label>
+            <span id="info-dept">—</span>
+          </div>
+          <div class="info-item">
+            <label>Email</label>
+            <span id="info-email">—</span>
+          </div>
+          <div class="info-item">
+            <label>Approving Manager</label>
+            <span id="info-manager">—</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Reason -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-header-icon">📋</div>
+        <div class="card-header-title">Request Details</div>
+      </div>
+      <div class="card-body">
+        <div class="field">
+          <label>Reason for purchase <span class="req">*</span></label>
+          <textarea id="reason" placeholder="Briefly explain why this purchase is needed…" rows="3"></textarea>
+        </div>
+        <div class="field">
+          <label>Currency <span class="req">*</span></label>
+          <div class="currency-toggle">
+            <button id="btn-cad" class="active" onclick="setCurrency('CAD')">CAD</button>
+            <button id="btn-usd" onclick="setCurrency('USD')">USD</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Line items -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-header-icon">🛒</div>
+        <div class="card-header-title">Items to Purchase</div>
+      </div>
+      <div class="card-body">
+        <div class="line-items-header">
+          <span>Item</span>
+          <span>Description / Model</span>
+          <span>Qty</span>
+          <span>Unit Price</span>
+          <span></span>
+        </div>
+        <div id="line-items-container"></div>
+        <button class="btn-add-line" onclick="addLine()">
+          + Add item
+        </button>
+
+        <div class="total-bar" id="total-bar">
+          <div>
+            <div class="total-label">Estimated Total</div>
+          </div>
+          <div class="total-amount" id="total-display">$0.00</div>
+        </div>
+        <div class="cap-msg" id="cap-msg"></div>
+      </div>
+    </div>
+
+    <!-- All orders delivered note -->
+    <div style="font-size:12px;color:var(--text-light);margin-bottom:16px;padding:0 4px">
+      ℹ All items are ordered and delivered to the reception desk. You will be notified when your order arrives.
+    </div>
+
+    <!-- Actions -->
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="resetForm()">Clear form</button>
+      <button class="btn btn-primary" id="submit-btn" onclick="submitRequisition()">
+        Submit for approval
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Success screen -->
+<div id="success-screen">
+  <div class="success-card">
+    <div class="success-icon">✓</div>
+    <h2 style="font-size:18px;color:var(--text)">Requisition Submitted</h2>
+    <div class="success-id" id="success-id"></div>
+    <div class="success-msg" id="success-msg"></div>
+    <button class="btn btn-primary" onclick="newRequisition()" style="margin-top:24px">
+      Submit another
+    </button>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+
+const CONFIG = {
+  clientId:     '6bfa3adb-1f7d-44e4-8cb9-38be4a107549',
+  tenantId:     '4c9a50a1-c27f-4044-8025-b59b5b804d16',
+  redirectUri:  'https://orange-bay-0e0de3210.7.azurestaticapps.net/requisition/',
+  spSite:       'https://macrodyne.sharepoint.com/sites/Requisitions',
+  crdSite:      'https://macrodyne.sharepoint.com/sites/CorporateReferenceData',
+  backendUrl:   'https://macrodyne-requisition-g7f9dxcxetg0hwcc.canadacentral-01.azurewebsites.net',
+  capAmount:    5000,
+  warnAmount:   4000,
+};
+
+const GRAPH_SCOPES = [
+  'https://graph.microsoft.com/Sites.Read.All',
+  'https://graph.microsoft.com/User.Read',
+];
+const SP_SCOPES = [
+  'https://macrodyne.sharepoint.com/AllSites.Read',
+];
+
+// ── STATE ────────────────────────────────────────────────────────────────────
+
+let msalInstance = null;
+let currentUser  = {};
+let catalogue    = [];
+let currency     = 'CAD';
+let lineCount    = 0;
+
+// ── MSAL INIT ────────────────────────────────────────────────────────────────
+
+async function initMsal() {
+  msalInstance = new msal.PublicClientApplication({
+    auth: {
+      clientId:    CONFIG.clientId,
+      authority:   `https://login.microsoftonline.com/${CONFIG.tenantId}`,
+      redirectUri: CONFIG.redirectUri,
+    },
+    cache: { cacheLocation: 'sessionStorage' },
+  });
+
+  await msalInstance.initialize();
+
+  // Handle redirect response
+  const response = await msalInstance.handleRedirectPromise();
+  if (response) {
+    msalInstance.setActiveAccount(response.account);
+  }
+
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length > 0) {
+    msalInstance.setActiveAccount(accounts[0]);
+    await onSignedIn();
+  } else {
+    showScreen('auth');
+  }
+}
+
+function signIn() {
+  msalInstance.loginRedirect({ scopes: GRAPH_SCOPES });
+}
+
+async function getGraphToken() {
+  const result = await msalInstance.acquireTokenSilent({
+    scopes:  GRAPH_SCOPES,
+    account: msalInstance.getActiveAccount(),
+  });
+  return result.accessToken;
+}
+
+async function getSpToken() {
+  const result = await msalInstance.acquireTokenSilent({
+    scopes:  SP_SCOPES,
+    account: msalInstance.getActiveAccount(),
+  });
+  return result.accessToken;
+}
+
+// ── SIGN IN FLOW ─────────────────────────────────────────────────────────────
+
+async function onSignedIn() {
+  const account = msalInstance.getActiveAccount();
+  const upn     = account.username;
+  const name    = account.name || upn;
+
+  // Update header
+  document.getElementById('user-name-header').textContent = name;
+  const initials = name.split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase();
+  document.getElementById('user-initials').textContent = initials;
+
+  // Resolve identity from Employee Master
+  try {
+    const emp = await resolveEmployee(upn);
+    currentUser = {
+      upn,
+      empNo:         emp?.EmpNo         || '',
+      fullName:      emp?.FullName       || name,
+      dept:          emp?.Department     || '',
+      managerEmpNo:  emp?.ManagerEmpNo   || '',
+      managerName:   emp?.ManagerName    || '',
+      roleCode:      emp?.RoleCode       || '',
+    };
+  } catch(e) {
+    currentUser = { upn, empNo: '', fullName: name, dept: '', managerEmpNo: '', managerName: '' };
+    console.warn('Employee Master lookup failed:', e);
+  }
+
+  // Populate requestor info panel
+  document.getElementById('info-name').textContent    = currentUser.fullName;
+  document.getElementById('info-email').textContent   = upn;
+  document.getElementById('info-dept').textContent    = currentUser.dept    || '—';
+  document.getElementById('info-manager').textContent = currentUser.managerName || (currentUser.managerEmpNo ? `EmpNo ${currentUser.managerEmpNo}` : 'None (top of chain)');
+
+  // Load catalogue
+  try {
+    catalogue = await loadCatalogue();
+  } catch(e) {
+    console.warn('Catalogue load failed:', e);
+    catalogue = [];
+  }
+
+  // Add first line item
+  addLine();
+
+  showScreen('main');
+}
+
+// ── SHAREPOINT HELPERS ───────────────────────────────────────────────────────
+
+async function spGet(site, listName, filter) {
+  const token = await getSpToken();
+  let url = `${site}/_api/web/lists/getbytitle('${encodeURIComponent(listName)}')/items`;
+  if (filter) url += `?$filter=${encodeURIComponent(filter)}`;
+  const r = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+  });
+  if (!r.ok) throw new Error(`SP GET failed: ${r.status}`);
+  const data = await r.json();
+  return data.value || [];
+}
+
+async function resolveEmployee(upn) {
+  const items = await spGet(CONFIG.crdSite, 'Employee Master', `M365UPN eq '${upn}'`);
+  return items[0] || null;
+}
+
+async function resolveManagerName(managerEmpNo) {
+  if (!managerEmpNo) return '';
+  const items = await spGet(CONFIG.crdSite, 'Employee Master', `EmpNo eq '${managerEmpNo}'`);
+  return items[0]?.FullName || `EmpNo ${managerEmpNo}`;
+}
+
+async function loadCatalogue() {
+  const items = await spGet(CONFIG.spSite, 'Requisition Items Catalogue', `Active eq 1`);
+  return items.sort((a,b) => (a.SortOrder||999) - (b.SortOrder||999));
+}
+
+// ── LINE ITEMS ───────────────────────────────────────────────────────────────
+
+function addLine() {
+  lineCount++;
+  const id = lineCount;
+  const container = document.getElementById('line-items-container');
+
+  const div = document.createElement('div');
+  div.className = 'line-item';
+  div.id = `line-${id}`;
+  div.innerHTML = `
+    <select onchange="onCatalogueChange(${id})" id="cat-${id}">
+      <option value="">— Select item —</option>
+      ${catalogue.map(c =>
+        `<option value="${c.Title || c.ItemCode}"
+                data-urls="${escHtml(c.SuggestedURLs||'')}">${escHtml(c.ItemName)}</option>`
+      ).join('')}
+      <option value="OTHER">Other (free-text)</option>
+    </select>
+    <input type="text"  id="desc-${id}"  placeholder="Brand / model / details" />
+    <input type="number" id="qty-${id}"   value="1" min="1" step="1"
+           oninput="recalc()" style="text-align:center" />
+    <input type="number" id="price-${id}" value="" min="0" step="0.01"
+           placeholder="0.00" oninput="recalc()" />
+    <button class="btn-remove" onclick="removeLine(${id})" title="Remove">×</button>
+  `;
+  container.appendChild(div);
+  recalc();
+}
+
+function removeLine(id) {
+  const el = document.getElementById(`line-${id}`);
+  if (el) el.remove();
+  // Don't allow empty
+  if (document.querySelectorAll('.line-item').length === 0) addLine();
+  recalc();
+}
+
+function onCatalogueChange(id) {
+  const sel   = document.getElementById(`cat-${id}`);
+  const desc  = document.getElementById(`desc-${id}`);
+  const price = document.getElementById(`price-${id}`);
+  const opt   = sel.options[sel.selectedIndex];
+
+  if (sel.value === 'OTHER') {
+    desc.placeholder = 'Describe the item in detail';
+    desc.value = '';
+    desc.focus();
+  } else if (sel.value) {
+    // Auto-fill description with item name as starting point
+    if (!desc.value) desc.value = '';
+    desc.placeholder = 'Brand / model / details';
+  }
+  recalc();
+}
+
+function recalc() {
+  let total = 0;
+  document.querySelectorAll('.line-item').forEach(row => {
+    const id    = row.id.replace('line-','');
+    const qty   = parseFloat(document.getElementById(`qty-${id}`)?.value)   || 0;
+    const price = parseFloat(document.getElementById(`price-${id}`)?.value) || 0;
+    total += qty * price;
+  });
+
+  const bar  = document.getElementById('total-bar');
+  const disp = document.getElementById('total-display');
+  const msg  = document.getElementById('cap-msg');
+
+  disp.textContent = `$${total.toLocaleString('en-CA', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+
+  bar.classList.remove('warn','over');
+  msg.classList.remove('show','warn','over');
+
+  if (total > CONFIG.capAmount) {
+    bar.classList.add('over');
+    msg.textContent = `⚠ Total exceeds the ${currency} $${CONFIG.capAmount.toLocaleString()} cap. Please use the formal PO process or reduce the total.`;
+    msg.classList.add('show','over');
+  } else if (total > CONFIG.warnAmount) {
+    bar.classList.add('warn');
+    msg.textContent = `Total is approaching the ${currency} $${CONFIG.capAmount.toLocaleString()} cap.`;
+    msg.classList.add('show','warn');
+  }
+
+  // Enable/disable submit
+  document.getElementById('submit-btn').disabled = total > CONFIG.capAmount;
+  return total;
+}
+
+// ── CURRENCY ─────────────────────────────────────────────────────────────────
+
+function setCurrency(c) {
+  currency = c;
+  document.getElementById('btn-cad').classList.toggle('active', c === 'CAD');
+  document.getElementById('btn-usd').classList.toggle('active', c === 'USD');
+  recalc();
+}
+
+// ── SUBMIT ───────────────────────────────────────────────────────────────────
+
+async function submitRequisition() {
+  hideError();
+
+  // Validate reason
+  const reason = document.getElementById('reason').value.trim();
+  if (!reason) {
+    showError('Please provide a reason for this purchase.');
+    document.getElementById('reason').focus();
+    return;
+  }
+
+  // Collect line items
+  const lineItems = [];
+  let valid = true;
+  document.querySelectorAll('.line-item').forEach(row => {
+    const id    = row.id.replace('line-','');
+    const cat   = document.getElementById(`cat-${id}`)?.value   || 'OTHER';
+    const desc  = document.getElementById(`desc-${id}`)?.value.trim() || '';
+    const qty   = parseFloat(document.getElementById(`qty-${id}`)?.value)   || 0;
+    const price = parseFloat(document.getElementById(`price-${id}`)?.value) || 0;
+
+    if (!cat || !desc || qty <= 0 || price <= 0) {
+      valid = false;
+    } else {
+      lineItems.push({
+        itemCode:          cat,
+        itemDescription:   desc,
+        quantity:          qty,
+        unitPriceEstimate: price,
+        itemURL:           '',
+      });
+    }
+  });
+
+  if (!valid || lineItems.length === 0) {
+    showError('Please complete all line items — item, description, quantity and price are required for each row.');
+    return;
+  }
+
+  // Cap check (client side)
+  const total = lineItems.reduce((s,l) => s + l.quantity * l.unitPriceEstimate, 0);
+  if (total > CONFIG.capAmount) {
+    showError(`Total exceeds the ${currency} $${CONFIG.capAmount.toLocaleString()} cap. Please use the formal PO process.`);
+    return;
+  }
+
+  // Build payload
+  const payload = {
+    action:                 'Submit',
+    requestorEmpNo:         currentUser.empNo,
+    requestorUPN:           currentUser.upn,
+    requestorFullName:      currentUser.fullName,
+    requestorManagerEmpNo:  currentUser.managerEmpNo,
+    requestorDept:          currentUser.dept,
+    currency,
+    reason,
+    lineItems,
+  };
+
+  // Submit
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Submitting…';
+
+  try {
+    const r = await fetch(`${CONFIG.backendUrl}/api/requisition`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload),
+    });
+    const result = await r.json();
+
+    if (result.success) {
+      showSuccess(result.requisitionID, currentUser.managerEmpNo);
+    } else if (result.capExceeded) {
+      showError(result.error);
+    } else {
+      showError(result.error || 'Submission failed. Please try again or contact IT.');
+    }
+  } catch(e) {
+    showError('Could not reach the requisition service. Please check your connection and try again.');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Submit for approval';
+    recalc();
+  }
+}
+
+// ── SUCCESS / RESET ──────────────────────────────────────────────────────────
+
+function showSuccess(reqId, hasManager) {
+  document.getElementById('success-id').textContent = reqId;
+  document.getElementById('success-msg').innerHTML =
+    hasManager
+      ? `Your requisition has been submitted and is awaiting manager approval. You will receive email updates at each stage.`
+      : `Your requisition has been submitted for AP approval. You will receive email updates at each stage.`;
+  showScreen('success');
+}
+
+function newRequisition() {
+  resetForm();
+  showScreen('main');
+}
+
+function resetForm() {
+  document.getElementById('reason').value = '';
+  document.getElementById('line-items-container').innerHTML = '';
+  lineCount = 0;
+  setCurrency('CAD');
+  hideError();
+  addLine();
+}
+
+// ── UI HELPERS ───────────────────────────────────────────────────────────────
+
+function showScreen(name) {
+  document.getElementById('auth-screen').style.display    = name === 'auth'    ? 'flex'  : 'none';
+  document.getElementById('main-screen').style.display    = name === 'main'    ? 'block' : 'none';
+  document.getElementById('success-screen').style.display = name === 'success' ? 'flex'  : 'none';
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-banner');
+  el.textContent = msg;
+  el.classList.add('show');
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function hideError() {
+  document.getElementById('error-banner').classList.remove('show');
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── BOOT ─────────────────────────────────────────────────────────────────────
+
+initMsal().catch(err => {
+  console.error('MSAL init error:', err);
+  document.getElementById('auth-screen').style.display = 'flex';
+});
+</script>
+</body>
+</html>
