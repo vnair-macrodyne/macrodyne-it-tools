@@ -17,7 +17,7 @@ Environment variables (set in Azure App Service Application Settings):
 
 All SharePoint writes use the cached delegated token (vnair@).
 Run the app once interactively to prime the cache.
-# Deployment: 2026-06-08-v2
+# Deployment: 2026-06-08-v3
 """
 
 import os
@@ -81,16 +81,9 @@ def add_cors_headers(response):
 def requisition_options():
     return Response("", status=200)
 
-def _cors(response: Response) -> Response:
-    response.headers["Access-Control-Allow-Origin"]  = "*"
-    response.headers["Access-Control-Allow-Methods"] = "POST, GET, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-    return response
-
 
 @app.route("/health", methods=["GET"])
 def health():
-    
     return jsonify({"status": "ok"})
 
 
@@ -99,15 +92,15 @@ def requisition_handler():
     """Main entry point — receives JSON payload from HTML form."""
 
     if request.method == "OPTIONS":
-        return _cors(Response("", status=200))
+        return Response("", status=200)
 
     try:
         payload = request.get_json(force=True)
     except Exception:
-        return _cors(Response(
+        return Response(
             json.dumps({"success": False, "error": "Invalid JSON payload"}),
             status=400, mimetype="application/json"
-        ))
+        )
 
     action = payload.get("action", "")
     logger.info(f"Requisition action: {action}")
@@ -134,10 +127,10 @@ def requisition_handler():
         logger.exception(f"Error handling action {action}")
         result = {"success": False, "error": str(e)}
 
-    return _cors(Response(
+    return Response(
         json.dumps(result),
         status=200, mimetype="application/json"
-    ))
+    )
 
 
 @app.route("/api/approve", methods=["GET"])
@@ -262,37 +255,42 @@ def handle_submit(payload: dict) -> dict:
     # Create row first with placeholder — SP assigns an atomic integer ID.
     # RequisitionID is derived from that ID to eliminate race conditions.
     req_row = {
-        "Title":                "PENDING",
-        "Status":               initial_status,
-        "RequestorEmpNo":       requestor_emp_no,
-        "RequestorUPN":         requestor_upn,
-        "RequestorName":        requestor_name,
-        "ManagerEmpNoSnapshot": manager_emp_no,
-        "ManagerUPN":           manager_upn,
-        "Reason":               reason,
-        "Currency":             currency,
-        "TotalAmount":          total,
-        "SubmittedUtc":         now,
+        "Title":                  "PENDING",
+        "RequisitionID":          "PENDING",
+        "Status":                 initial_status,
+        "RequestorEmpNo":         requestor_emp_no,
+        "RequestorUPN":           requestor_upn,
+        "RequestorName":          requestor_name,
+        "ManagerEmpNoSnapshot":   manager_emp_no,
+        "ManagerUPN":             manager_upn,
+        "Reason":                 reason,
+        "Currency":               currency,
+        "TotalAmount":            total,
+        "SubmittedUtc":           now,
     }
     created = sp_create_item(REQ_SITE, LIST_REQ, req_row)
     sp_item_id = created["ID"]
     requisition_id = generate_requisition_id(sp_item_id)
 
-    # Update with the real RequisitionID now that we have the SP integer ID
+    # Update Title and RequisitionID with the real ID now that SP has assigned one
     sp_update_item(REQ_SITE, LIST_REQ, sp_item_id, {
-        "Title": requisition_id,
+        "Title":         requisition_id,
+        "RequisitionID": requisition_id,
     })
+
+    # FIX: sp_create_item call was incorrectly merged onto the closing brace line
     for i, item in enumerate(line_items, start=1):
-      line_row = {
-          "Title":             f"{requisition_id}-{i:02d}",
-          "RequisitionID":     requisition_id,
-          "LineNumber":        i,
-          "ItemCode":          item.get("itemCode", "OTHER"),
-          "ItemDescription":   item.get("itemDescription", ""),
-          "Quantity":          item.get("quantity", 1),
-          "UnitPriceEstimate": item.get("unitPriceEstimate", 0),
-          "ItemURL":           item.get("itemURL", ""),
-      }        sp_create_item(REQ_SITE, LIST_LINES, line_row)
+        line_row = {
+            "Title":             f"{requisition_id}-{i:02d}",
+            "RequisitionID":     requisition_id,
+            "LineNumber":        i,
+            "ItemCode":          item.get("itemCode", "OTHER"),
+            "ItemDescription":   item.get("itemDescription", ""),
+            "Quantity":          item.get("quantity", 1),
+            "UnitPriceEstimate": item.get("unitPriceEstimate", 0),
+            "ItemURL":           item.get("itemURL", ""),
+        }
+        sp_create_item(REQ_SITE, LIST_LINES, line_row)
 
     write_history(
         requisition_id=requisition_id,
@@ -551,12 +549,13 @@ def handle_mark_received(payload: dict) -> dict:
         return {"success": False, "error": "Requisition not found"}
 
     now = datetime.datetime.utcnow().isoformat() + "Z"
+    # FIX: was "Received" — correct SP Choice value is "ReceivedByPurchaser"
     sp_update_item(REQ_SITE, LIST_REQ, req["ID"], {
-        "Status":          "Received",
+        "Status":          "ReceivedByPurchaser",
         "ReceivedUtc":     now,
         "ReceivedByEmpNo": actor_emp_no,
     })
-    write_history(requisition_id, "Ordered", "Received",
+    write_history(requisition_id, "Ordered", "ReceivedByPurchaser",
                   actor_emp_no, "Item received at reception")
 
     receipt_days = config.get("ReceiptConfirmDays", "5")
@@ -590,7 +589,8 @@ def handle_confirm(payload: dict) -> dict:
         "ConfirmedUtc": now,
         "ClosedUtc":    now,
     })
-    write_history(requisition_id, "Received", "ConfirmedByRequestor",
+    # FIX: from_status was "Received" — correct SP Choice value is "ReceivedByPurchaser"
+    write_history(requisition_id, "ReceivedByPurchaser", "ConfirmedByRequestor",
                   actor_emp_no, "Requestor confirmed receipt")
     write_history(requisition_id, "ConfirmedByRequestor", "Closed",
                   actor_emp_no, "Auto-closed on receipt confirmation")
@@ -866,9 +866,8 @@ def resolve_upn(emp_no: str) -> str:
         CRD_SITE, LIST_EMPLOYEE,
         f"Employee_x0020_Number eq '{emp_no}'"
     )
-    if not items:
-        return ""
     return items[0].get("M365_x0020_UPN", "") if items else ""
+
 
 # ── Routing helpers ────────────────────────────────────────────────────────────
 
