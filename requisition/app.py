@@ -17,7 +17,7 @@ Environment variables (set in Azure App Service Application Settings):
 
 All SharePoint writes use the cached delegated token (vnair@).
 Run the app once interactively to prime the cache.
-# Deployment: 2026-06-08-v6.1
+# Deployment: 2026-06-08-v6.2
 """
 
 import os
@@ -983,18 +983,18 @@ def _approval_links(
 
 
 def _approval_buttons(approve_url: str, reject_url: str) -> str:
-    """Outlook-safe approve/reject buttons using VML + table layout."""
+    """Outlook-safe approve/reject buttons using bgcolor td method."""
     return (
         "<table cellpadding='0' cellspacing='0' border='0' style='margin:24px 0'><tr>"
-        f"<td style='padding-right:12px'>"
-        f"<a href='{approve_url}' style='background:#107C10;border-radius:4px;color:#ffffff;"
-        f"display:inline-block;font-family:Segoe UI,Arial,sans-serif;font-size:14px;"
-        f"font-weight:bold;line-height:40px;text-align:center;text-decoration:none;"
-        f"width:120px;mso-padding-alt:0;padding:0 24px;'>&#10003; Approve</a></td>"
-        f"<td><a href='{reject_url}' style='background:#A4262C;border-radius:4px;color:#ffffff;"
-        f"display:inline-block;font-family:Segoe UI,Arial,sans-serif;font-size:14px;"
-        f"font-weight:bold;line-height:40px;text-align:center;text-decoration:none;"
-        f"width:120px;mso-padding-alt:0;padding:0 24px;'>&#10007; Reject</a></td>"
+        f"<td bgcolor='#107C10' style='border-radius:4px;padding:0 24px;mso-padding-alt:10px 24px;margin-right:12px'>"
+        f"<a href='{approve_url}' style='color:#ffffff;display:block;font-family:Segoe UI,Arial,sans-serif;"
+        f"font-size:14px;font-weight:bold;line-height:40px;text-align:center;text-decoration:none;"
+        f"white-space:nowrap;'>&#10003;&nbsp;Approve</a></td>"
+        f"<td width='16'></td>"
+        f"<td bgcolor='#A4262C' style='border-radius:4px;padding:0 24px;mso-padding-alt:10px 24px'>"
+        f"<a href='{reject_url}' style='color:#ffffff;display:block;font-family:Segoe UI,Arial,sans-serif;"
+        f"font-size:14px;font-weight:bold;line-height:40px;text-align:center;text-decoration:none;"
+        f"white-space:nowrap;'>&#10007;&nbsp;Reject</a></td>"
         "</tr></table>"
     )
 
