@@ -17,7 +17,7 @@ Environment variables (set in Azure App Service Application Settings):
 
 All SharePoint writes use the cached delegated token (vnair@).
 Run the app once interactively to prime the cache.
-# Deployment: 2026-06-08-v3
+# Deployment: 2026-06-08-v4
 """
 
 import os
@@ -256,7 +256,6 @@ def handle_submit(payload: dict) -> dict:
     # RequisitionID is derived from that ID to eliminate race conditions.
     req_row = {
         "Title":                  "PENDING",
-        "RequisitionID":          "PENDING",
         "Status":                 initial_status,
         "RequestorEmpNo":         requestor_emp_no,
         "RequestorUPN":           requestor_upn,
@@ -266,7 +265,6 @@ def handle_submit(payload: dict) -> dict:
         "Reason":                 reason,
         "Currency":               currency,
         "TotalAmount":            total,
-        "SubmittedUtc":           now,
     }
     created = sp_create_item(REQ_SITE, LIST_REQ, req_row)
     sp_item_id = created["ID"]
@@ -274,8 +272,7 @@ def handle_submit(payload: dict) -> dict:
 
     # Update Title and RequisitionID with the real ID now that SP has assigned one
     sp_update_item(REQ_SITE, LIST_REQ, sp_item_id, {
-        "Title":         requisition_id,
-        "RequisitionID": requisition_id,
+        "Title": requisition_id,
     })
 
     # FIX: sp_create_item call was incorrectly merged onto the closing brace line
@@ -358,7 +355,7 @@ def handle_approval(
             "Status":                 "PendingAP",
             "ManagerApprovedUtc":     now,
             "ManagerApproverEmpNo":   actor_emp_no,
-            "ManagerApproverEmpName": actor_name,
+            "ManagerApproverEmpNo0":  actor_name,
             "ManagerComment":         comment,
         })
         write_history(requisition_id, "PendingManager", "PendingAP",
@@ -773,6 +770,8 @@ def sp_create_item(site: str, list_name: str, fields: dict) -> dict:
     )
     headers["X-RequestDigest"] = _get_request_digest(site, token)
     r = requests.post(url, headers=headers, json=body)
+    if not r.ok:
+        logger.error(f"SP create_item failed {r.status_code} on {list_name}: {r.text[:500]}")
     r.raise_for_status()
     return r.json()
 
@@ -804,6 +803,8 @@ def sp_update_item(site: str, list_name: str, item_id: int, fields: dict):
         "X-RequestDigest": _get_request_digest(site, token),
     }
     r = requests.post(url, headers=headers, json=body)
+    if not r.ok:
+        logger.error(f"SP update_item failed {r.status_code} on {list_name}({item_id}): {r.text[:500]}")
     r.raise_for_status()
 
 
