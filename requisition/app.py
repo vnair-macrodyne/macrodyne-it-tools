@@ -17,7 +17,7 @@ Environment variables (set in Azure App Service Application Settings):
 
 All SharePoint writes use the cached delegated token (vnair@).
 Run the app once interactively to prime the cache.
-# Deployment: 2026-06-08-v6.2
+# Deployment: 2026-06-08-v6.4
 """
 
 import os
@@ -241,7 +241,11 @@ def handle_submit(payload: dict) -> dict:
             )
         }
 
-    initial_status = "PendingAP" if not manager_emp_no else "PendingManager"
+    # Skip manager approval if total is below the configured threshold.
+    # If the config key is missing, default to 0 (all requisitions require manager approval).
+    threshold_key = "ManagerThresholdCAD" if currency == "CAD" else "ManagerThresholdUSD"
+    threshold = float(config.get(threshold_key, 0))
+    initial_status = "PendingAP" if (not manager_emp_no or total < threshold) else "PendingManager"
 
     manager_upn = ""
     if manager_emp_no:
@@ -983,19 +987,24 @@ def _approval_links(
 
 
 def _approval_buttons(approve_url: str, reject_url: str) -> str:
-    """Outlook-safe approve/reject buttons using bgcolor td method."""
+    """
+    Approval action links. Rendered as plain hyperlinks — Outlook Safe Links
+    rewrites long JWT URLs in a way that breaks styled button rendering.
+    Plain <a> tags are reliable across all Outlook versions and Safe Links.
+    """
     return (
-        "<table cellpadding='0' cellspacing='0' border='0' style='margin:24px 0'><tr>"
-        f"<td bgcolor='#107C10' style='border-radius:4px;padding:0 24px;mso-padding-alt:10px 24px;margin-right:12px'>"
-        f"<a href='{approve_url}' style='color:#ffffff;display:block;font-family:Segoe UI,Arial,sans-serif;"
-        f"font-size:14px;font-weight:bold;line-height:40px;text-align:center;text-decoration:none;"
-        f"white-space:nowrap;'>&#10003;&nbsp;Approve</a></td>"
-        f"<td width='16'></td>"
-        f"<td bgcolor='#A4262C' style='border-radius:4px;padding:0 24px;mso-padding-alt:10px 24px'>"
-        f"<a href='{reject_url}' style='color:#ffffff;display:block;font-family:Segoe UI,Arial,sans-serif;"
-        f"font-size:14px;font-weight:bold;line-height:40px;text-align:center;text-decoration:none;"
-        f"white-space:nowrap;'>&#10007;&nbsp;Reject</a></td>"
-        "</tr></table>"
+        "<table cellpadding='0' cellspacing='0' border='0' style='margin:20px 0;border-left:4px solid #0078D4;padding-left:12px'>"
+        "<tr><td style='padding:6px 0;font-family:Segoe UI,Arial,sans-serif;font-size:14px'>"
+        f"<a href='{approve_url}' style='color:#107C10;font-weight:700;text-decoration:none;'>&#10003; Approve this requisition</a>"
+        "</td></tr>"
+        "<tr><td style='padding:6px 0;font-family:Segoe UI,Arial,sans-serif;font-size:14px'>"
+        f"<a href='{reject_url}' style='color:#A4262C;font-weight:700;text-decoration:none;'>&#10007; Reject this requisition</a>"
+        "</td></tr>"
+        "</table>"
+        "<p style='font-size:11px;color:#757575;margin-top:4px'>"
+        "If the links above do not work, copy and paste the URL from your browser address bar after clicking.<br>"
+        "Approve: <span style='word-break:break-all'>" + approve_url[:60] + "…</span>"
+        "</p>"
     )
 
 
