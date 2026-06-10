@@ -17,7 +17,7 @@ Environment variables (set in Azure App Service Application Settings):
 
 All SharePoint writes use the cached delegated token (vnair@).
 Run the app once interactively to prime the cache.
-# Deployment: 2026-06-08-v6.4
+# Deployment: 2026-06-09-v6.5
 """
 
 import os
@@ -757,6 +757,8 @@ def sp_get_items(site: str, list_name: str, filter_query: str = "") -> list:
     items = []
     while url:
         r = requests.get(url, headers=headers)
+        if not r.ok:
+            logger.error(f"SP get_items failed {r.status_code} on {list_name}: {r.text[:500]}")
         r.raise_for_status()
         data = r.json()
         results = data.get("d", {}).get("results", data.get("value", []))
