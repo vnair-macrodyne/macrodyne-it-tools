@@ -17,7 +17,7 @@ Environment variables (set in Azure App Service Application Settings):
 
 All SharePoint writes use the cached delegated token (vnair@).
 Run the app once interactively to prime the cache.
-# Deployment: 2026-06-09-v6.5
+# Deployment: 2026-06-10-v6.6
 """
 
 import os
@@ -60,6 +60,7 @@ LIST_LINES      = "Requisition Lines"
 LIST_HISTORY    = "Requisition Status History"
 LIST_CATALOGUE  = "Requisition Items Catalogue"
 LIST_EMPLOYEE   = "Employee Master"
+LIST_TOKENS     = "Approval Tokens"
 
 # Token expiry for approval links (hours)
 APPROVAL_TOKEN_EXPIRY_HOURS = 72
@@ -134,11 +135,32 @@ def requisition_handler():
 
 @app.route("/api/approve", methods=["GET"])
 def approve_handler():
-    token_str = request.args.get("token", "")
+    code      = request.args.get("code", "")
+    token_str = request.args.get("token", "")   # legacy fallback
     action    = request.args.get("action", "")
     comment   = request.args.get("comment", "")
 
-    if not token_str or action not in ("approve", "reject"):
+    if not action or action not in ("approve", "reject"):
+        return Response(
+            _html_page("Invalid Link",
+                "This approval link is invalid or malformed. "
+                "Please contact IT if you believe this is an error."),
+            status=400, mimetype="text/html"
+        )
+
+    # Resolve JWT: prefer short code, fall back to direct token param (legacy emails)
+    if code:
+        token_str = _resolve_approval_token(code)
+        if not token_str:
+            return Response(
+                _html_page("Link Already Used or Expired",
+                    "This approval link has already been used or has expired. "
+                    "Please check if the requisition has already been actioned, "
+                    "or contact the requestor to re-submit."),
+                status=400, mimetype="text/html"
+            )
+
+    if not token_str:
         return Response(
             _html_page("Invalid Link",
                 "This approval link is invalid or malformed. "
@@ -978,13 +1000,52 @@ def _make_approval_token(
     return jwt.encode(payload, TOKEN_SECRET, algorithm="HS256")
 
 
+def _store_approval_token(jwt_token: str) -> str:
+    """Store JWT in Approval Tokens list, return short code (stored in Title)."""
+    import secrets
+    code = secrets.token_urlsafe(8)          # ~11 char URL-safe code
+    expires = (
+        datetime.datetime.utcnow() +
+        datetime.timedelta(hours=APPROVAL_TOKEN_EXPIRY_HOURS)
+    ).isoformat() + "Z"
+    sp_create_item(REQ_SITE, LIST_TOKENS, {
+        "Title":     code,                   # short code
+        "Code":      jwt_token,              # full JWT (internal name = Code)
+        "ExpireUtc": expires,
+        "Used":      False,
+    })
+    return code
+
+
+def _resolve_approval_token(code: str) -> str | None:
+    """Look up JWT by short code. Returns JWT string, or None if not found/used/expired."""
+    items = sp_get_items(REQ_SITE, LIST_TOKENS, f"Title eq '{code}'")
+    if not items:
+        return None
+    item = items[0]
+    if item.get("Used"):
+        return None
+    expire_str = item.get("ExpireUtc", "")
+    if expire_str:
+        try:
+            expire_dt = datetime.datetime.fromisoformat(expire_str.rstrip("Z"))
+            if datetime.datetime.utcnow() > expire_dt:
+                return None
+        except Exception:
+            pass
+    # Mark as used
+    sp_update_item(REQ_SITE, LIST_TOKENS, item["ID"], {"Used": True})
+    return item.get("Code", "")              # JWT is in the Code column
+
+
 def _approval_links(
     requisition_id, expected_status, actor_emp_no, actor_name
 ) -> tuple:
-    token = _make_approval_token(
+    jwt_token = _make_approval_token(
         requisition_id, expected_status, actor_emp_no, actor_name
     )
-    base = f"{FUNCTION_BASE_URL}/api/approve?token={urllib.parse.quote(token)}"
+    code = _store_approval_token(jwt_token)
+    base = f"{FUNCTION_BASE_URL}/api/approve?code={urllib.parse.quote(code)}"
     return f"{base}&action=approve", f"{base}&action=reject"
 
 
