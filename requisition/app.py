@@ -42,6 +42,8 @@ MSAL_CACHE_PATH   = os.environ.get("MSAL_CACHE_PATH", "/home/.msalcache_req")
 GRAPH_SCOPES = [
     "https://graph.microsoft.com/Sites.Read.All",
     "https://graph.microsoft.com/Mail.Send",
+    "https://graph.microsoft.com/Chat.Create",
+    "https://graph.microsoft.com/ChatMessage.Send",
 ]
 SP_WRITE_SCOPES = [
     "https://macrodyne.sharepoint.com/AllSites.Write",
