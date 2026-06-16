@@ -17,8 +17,7 @@ Environment variables (set in Azure App Service Application Settings):
 
 All SharePoint writes use the cached delegated token (vnair@).
 Run the app once interactively to prime the cache.
-# Deployment: 2026-06-13-v6.7
-# Deployment: 2026-06-15-v6.7.1
+# Deployment: 2026-06-16-v6.8
 """
 
 import os
@@ -1150,6 +1149,14 @@ def _approval_links(
     return f"{base}&action=approve", f"{base}&action=reject"
 
 
+def _v(item, *keys, default=0):
+    """Try multiple key names — handles camelCase payload and PascalCase SP read-back."""
+    for k in keys:
+        if k in item and item[k] not in (None, ""):
+            return item[k]
+    return default
+
+
 def _approval_buttons(approve_url: str, reject_url: str) -> str:
     """
     Approval action links. Rendered as plain hyperlinks — Outlook Safe Links
@@ -1173,12 +1180,6 @@ def _approval_buttons(approve_url: str, reject_url: str) -> str:
 
 
 def _line_items_table(line_items: list) -> str:
-    def _v(item, *keys, default=0):
-        for k in keys:
-            if k in item and item[k] not in (None, ""):
-                return item[k]
-        return default
-
     rows = "".join(
         f"<tr>"
         f"<td style='padding:6px 12px;border:1px solid #e0e0e0'>{_v(item, 'itemDescription', 'ItemDescription', default='')}</td>"
