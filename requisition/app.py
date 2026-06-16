@@ -17,7 +17,7 @@ Environment variables (set in Azure App Service Application Settings):
 
 All SharePoint writes use the cached delegated token (vnair@).
 Run the app once interactively to prime the cache.
-# Deployment: 2026-06-16-v6.9
+# Deployment: 2026-06-16-v6.10
 """
 
 import os
@@ -963,15 +963,35 @@ def _get_or_create_chat(approver_upn: str) -> str:
     """Get or create a 1:1 chat between the app user and approver. Returns chatId."""
     token = _get_graph_token()
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    # Get sender's user ID first
+    me_r = requests.get(
+        "https://graph.microsoft.com/v1.0/me?$select=id",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    me_r.raise_for_status()
+    sender_id = me_r.json()["id"]
+
+    # Get approver's user ID
+    approver_r = requests.get(
+        f"https://graph.microsoft.com/v1.0/users/{approver_upn}?$select=id",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    approver_r.raise_for_status()
+    approver_id = approver_r.json()["id"]
+
     chat_body = {
         "chatType": "oneOnOne",
         "members": [
-            {"@odata.type": "#microsoft.graph.aadUserConversationMember",
-             "roles": ["owner"],
-             "user@odata.bind": "https://graph.microsoft.com/v1.0/me"},
-            {"@odata.type": "#microsoft.graph.aadUserConversationMember",
-             "roles": ["owner"],
-             "user@odata.bind": f"https://graph.microsoft.com/v1.0/users/{approver_upn}"}
+            {
+                "@odata.type": "#microsoft.graph.aadUserConversationMember",
+                "roles": ["owner"],
+                "user@odata.bind": f"https://graph.microsoft.com/v1.0/users('{sender_id}')"
+            },
+            {
+                "@odata.type": "#microsoft.graph.aadUserConversationMember",
+                "roles": ["owner"],
+                "user@odata.bind": f"https://graph.microsoft.com/v1.0/users('{approver_id}')"
+            }
         ]
     }
     r = requests.post("https://graph.microsoft.com/v1.0/chats", headers=headers, json=chat_body)
