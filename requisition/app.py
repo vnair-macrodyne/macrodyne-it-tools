@@ -17,7 +17,7 @@ Environment variables (set in Azure App Service Application Settings):
 
 All SharePoint writes use the cached delegated token (vnair@).
 Run the app once interactively to prime the cache.
-# Deployment: 2026-06-16-v6.8
+# Deployment: 2026-06-16-v6.9
 """
 
 import os
@@ -975,6 +975,8 @@ def _get_or_create_chat(approver_upn: str) -> str:
         ]
     }
     r = requests.post("https://graph.microsoft.com/v1.0/chats", headers=headers, json=chat_body)
+    if not r.ok:
+        logger.error(f"Graph chats failed {r.status_code}: {r.text[:500]}")
     r.raise_for_status()
     return r.json()["id"]
 
