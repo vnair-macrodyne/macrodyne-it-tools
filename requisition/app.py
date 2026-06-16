@@ -17,7 +17,7 @@ Environment variables (set in Azure App Service Application Settings):
 
 All SharePoint writes use the cached delegated token (vnair@).
 Run the app once interactively to prime the cache.
-# Deployment: 2026-06-16-v6.12
+# Deployment: 2026-06-16-v6.14
 """
 
 import os
@@ -108,6 +108,10 @@ def requisition_handler():
     try:
         if action == "Submit":
             result = handle_submit(payload)
+        elif action == "ApproveByUPN":
+            result = handle_approve_by_upn(payload)
+        elif action == "RejectByUPN":
+            result = handle_reject_by_upn(payload)
         elif action == "Cancel":
             result = handle_cancel(payload)
         elif action == "MarkOrdered":
@@ -131,6 +135,85 @@ def requisition_handler():
         json.dumps(result),
         status=200, mimetype="application/json"
     )
+
+
+@app.route("/api/pending", methods=["GET"])
+def pending_handler():
+    """Return requisition details for approver view. Validates approver identity."""
+    requisition_id = request.args.get("requisitionID", "")
+    approver_upn   = request.args.get("approverUPN", "")
+
+    if not requisition_id or not approver_upn:
+        return Response(
+            json.dumps({"success": False, "error": "Missing requisitionID or approverUPN"}),
+            status=400, mimetype="application/json"
+        )
+
+    try:
+        req = get_requisition(requisition_id)
+        if not req:
+            return Response(
+                json.dumps({"success": False, "error": "Requisition not found"}),
+                status=404, mimetype="application/json"
+            )
+
+        current_status = req.get("Status", "")
+        roles = load_roles()
+
+        # Validate approver has the right to action this requisition
+        if current_status == "PendingManager":
+            expected_upn = req.get("ManagerUPN", "")
+            if approver_upn.lower() != expected_upn.lower():
+                return Response(
+                    json.dumps({"success": False, "error": "You are not the assigned approver for this requisition"}),
+                    status=403, mimetype="application/json"
+                )
+        elif current_status == "PendingAP":
+            ap_upn = _resolve_ap_upn(req.get("RequestorEmpNo", ""), roles)
+            if approver_upn.lower() != ap_upn.lower():
+                return Response(
+                    json.dumps({"success": False, "error": "You are not the assigned approver for this requisition"}),
+                    status=403, mimetype="application/json"
+                )
+        else:
+            return Response(
+                json.dumps({"success": False, "error": f"This requisition is not pending approval (status: {current_status})"}),
+                status=400, mimetype="application/json"
+            )
+
+        line_items = get_line_items(requisition_id)
+
+        return Response(
+            json.dumps({
+                "success": True,
+                "requisition": {
+                    "requisitionID":  requisition_id,
+                    "status":         current_status,
+                    "requestorName":  req.get("RequestorName", ""),
+                    "requestorEmpNo": req.get("RequestorEmpNo", ""),
+                    "dept":           "",
+                    "reason":         req.get("Reason", ""),
+                    "currency":       req.get("Currency", "CAD"),
+                    "totalAmount":    float(req.get("TotalAmount", 0)),
+                    "submittedUtc":   req.get("SubmittedUtc", ""),
+                },
+                "lineItems": [
+                    {
+                        "itemDescription":   item.get("ItemDescription", ""),
+                        "quantity":          item.get("Quantity", 1),
+                        "unitPriceEstimate": float(item.get("UnitPriceEstimate", 0)),
+                    }
+                    for item in line_items
+                ]
+            }),
+            status=200, mimetype="application/json"
+        )
+    except Exception as e:
+        logger.exception(f"Error in pending_handler for {requisition_id}")
+        return Response(
+            json.dumps({"success": False, "error": str(e)}),
+            status=500, mimetype="application/json"
+        )
 
 
 @app.route("/api/approve", methods=["GET"])
@@ -364,6 +447,58 @@ def handle_submit(payload: dict) -> dict:
 
 
 # ── Approval handling ──────────────────────────────────────────────────────────
+
+def handle_approve_by_upn(payload: dict) -> dict:
+    """Approver-initiated approval from SPA. Identity proven by M365 login."""
+    requisition_id = payload["requisitionID"]
+    approver_upn   = payload["approverUPN"]
+    approver_name  = payload.get("approverName", "")
+    comment        = payload.get("comment", "")
+
+    req = get_requisition(requisition_id)
+    if not req:
+        return {"success": False, "error": "Requisition not found"}
+
+    current_status = req.get("Status", "")
+    roles = load_roles()
+
+    # Resolve approver emp no from UPN
+    approver_emp_no = _resolve_emp_no_from_upn(approver_upn)
+
+    return handle_approval(
+        requisition_id, current_status,
+        approver_emp_no, approver_name, comment
+    )
+
+
+def handle_reject_by_upn(payload: dict) -> dict:
+    """Approver-initiated rejection from SPA. Identity proven by M365 login."""
+    requisition_id = payload["requisitionID"]
+    approver_upn   = payload["approverUPN"]
+    approver_name  = payload.get("approverName", "")
+    comment        = payload.get("comment", "")
+
+    req = get_requisition(requisition_id)
+    if not req:
+        return {"success": False, "error": "Requisition not found"}
+
+    current_status = req.get("Status", "")
+    approver_emp_no = _resolve_emp_no_from_upn(approver_upn)
+
+    return handle_rejection(
+        requisition_id, current_status,
+        approver_emp_no, approver_name, comment
+    )
+
+
+def _resolve_emp_no_from_upn(upn: str) -> str:
+    """Look up EmpNo from UPN in Employee Master."""
+    items = sp_get_items(
+        CRD_SITE, LIST_EMPLOYEE,
+        f"M365_x0020_UPN eq '{upn}'"
+    )
+    return items[0].get("Employee_x0020_Number", "") if items else ""
+
 
 def handle_approval(
     requisition_id, expected_status, actor_emp_no, actor_name, comment
@@ -1042,12 +1177,11 @@ def _resolve_approval_token(code: str) -> str | None:
 def _approval_links(
     requisition_id, expected_status, actor_emp_no, actor_name
 ) -> tuple:
-    jwt_token = _make_approval_token(
-        requisition_id, expected_status, actor_emp_no, actor_name
-    )
-    code = _store_approval_token(jwt_token)
-    base = f"{FUNCTION_BASE_URL}/api/approve?code={urllib.parse.quote(code)}"
-    return f"{base}&action=approve", f"{base}&action=reject"
+    # Embed requisition_id as req param so _approval_buttons can build the SPA URL
+    # The actual approval action is handled by the SPA calling the backend with the approver UPN
+    approve_url = f"placeholder?req={urllib.parse.quote(requisition_id)}&action=approve"
+    reject_url  = f"placeholder?req={urllib.parse.quote(requisition_id)}&action=reject"
+    return approve_url, reject_url
 
 
 def _v(item, *keys, default=0):
@@ -1059,27 +1193,24 @@ def _v(item, *keys, default=0):
 
 
 def _approval_buttons(approve_url: str, reject_url: str) -> str:
-    """
-    Approval action links. Rendered as plain hyperlinks — Outlook Safe Links
-    rewrites long JWT URLs in a way that breaks styled button rendering.
-    Plain <a> tags are reliable across all Outlook versions and Safe Links.
-    """
+    """Single link to the SPA approver page. approve_url contains the requisitionID as a query param."""
+    # Extract requisition ID from approve_url to build the SPA link
+    # approve_url format: .../api/approve?code=xxx&action=approve
+    # We build: .../requisition/approve/?req=REQ-2026-XXXX
+    import re
+    req_match = re.search(r'req=([^&]+)', approve_url)
+    req_id = req_match.group(1) if req_match else ""
+    spa_url = f"https://orange-bay-0e0de3210.7.azurestaticapps.net/requisition/approve/?req={req_id}"
     return (
-        "<table cellpadding='0' cellspacing='0' border='0' style='margin:20px 0;border-left:4px solid #0078D4;padding-left:12px'>"
-        "<tr><td style='padding:6px 0;font-family:Segoe UI,Arial,sans-serif;font-size:14px'>"
-        f"<a href='{approve_url}' style='color:#107C10;font-weight:700;text-decoration:none;'>&#10003; Approve this requisition</a>"
-        "</td></tr>"
-        "<tr><td style='padding:6px 0;font-family:Segoe UI,Arial,sans-serif;font-size:14px'>"
-        f"<a href='{reject_url}' style='color:#A4262C;font-weight:700;text-decoration:none;'>&#10007; Reject this requisition</a>"
-        "</td></tr>"
-        "</table>"
-        "<p style='font-size:11px;color:#757575;margin-top:4px'>"
-        "If the links above do not work, copy and paste the URL from your browser address bar after clicking.<br>"
-        "Approve: <span style='word-break:break-all'>" + approve_url[:60] + "…</span>"
-        "</p>"
+        "<div style='margin:20px 0;padding:16px;background:#EBF3FB;"
+        "border-left:4px solid #0078D4;border-radius:4px'>"
+        "<p style='margin:0 0 8px 0;font-family:Segoe UI,Arial,sans-serif;"
+        "font-size:14px;color:#1B1B1B'>To approve or reject this requisition, "
+        "please click the link below to open the approval page:</p>"
+        f"<a href='{spa_url}' style='font-family:Segoe UI,Arial,sans-serif;"
+        f"font-size:14px;font-weight:700;color:#0063B1'>{spa_url}</a>"
+        "</div>"
     )
-
-
 def _line_items_table(line_items: list) -> str:
     rows = "".join(
         f"<tr>"
