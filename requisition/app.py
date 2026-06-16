@@ -17,7 +17,7 @@ Environment variables (set in Azure App Service Application Settings):
 
 All SharePoint writes use the cached delegated token (vnair@).
 Run the app once interactively to prime the cache.
-# Deployment: 2026-06-16-v6.10
+# Deployment: 2026-06-16-v6.12
 """
 
 import os
@@ -42,8 +42,6 @@ MSAL_CACHE_PATH   = os.environ.get("MSAL_CACHE_PATH", "/home/.msalcache_req")
 GRAPH_SCOPES = [
     "https://graph.microsoft.com/Sites.Read.All",
     "https://graph.microsoft.com/Mail.Send",
-    "https://graph.microsoft.com/Chat.Create",
-    "https://graph.microsoft.com/ChatMessage.Send",
 ]
 SP_WRITE_SCOPES = [
     "https://macrodyne.sharepoint.com/AllSites.Write",
@@ -959,125 +957,6 @@ def _resolve_fulfill_upn(requestor_emp_no: str, roles: dict) -> str:
 
 # ── Email helpers ──────────────────────────────────────────────────────────────
 
-def _get_or_create_chat(approver_upn: str) -> str:
-    """Get or create a 1:1 chat between the app user and approver. Returns chatId."""
-    token = _get_graph_token()
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    # Get sender's user ID first
-    me_r = requests.get(
-        "https://graph.microsoft.com/v1.0/me?$select=id",
-        headers={"Authorization": f"Bearer {token}"}
-    )
-    me_r.raise_for_status()
-    sender_id = me_r.json()["id"]
-
-    # Get approver's user ID
-    approver_r = requests.get(
-        f"https://graph.microsoft.com/v1.0/users/{approver_upn}?$select=id",
-        headers={"Authorization": f"Bearer {token}"}
-    )
-    approver_r.raise_for_status()
-    approver_id = approver_r.json()["id"]
-
-    chat_body = {
-        "chatType": "oneOnOne",
-        "members": [
-            {
-                "@odata.type": "#microsoft.graph.aadUserConversationMember",
-                "roles": ["owner"],
-                "user@odata.bind": f"https://graph.microsoft.com/v1.0/users('{sender_id}')"
-            },
-            {
-                "@odata.type": "#microsoft.graph.aadUserConversationMember",
-                "roles": ["owner"],
-                "user@odata.bind": f"https://graph.microsoft.com/v1.0/users('{approver_id}')"
-            }
-        ]
-    }
-    r = requests.post("https://graph.microsoft.com/v1.0/chats", headers=headers, json=chat_body)
-    if not r.ok:
-        logger.error(f"Graph chats failed {r.status_code}: {r.text[:500]}")
-    r.raise_for_status()
-    return r.json()["id"]
-
-
-def send_teams_approval_card(
-    approver_upn: str, requisition_id: str, requestor_name: str,
-    dept: str, reason: str, total: float, currency: str, line_items: list,
-    approve_url: str, reject_url: str, manager_skipped: bool = False, is_ap: bool = False
-):
-    """Send an Adaptive Card to approver via Teams 1:1 chat. Non-fatal on failure."""
-    if not approver_upn:
-        logger.warning(f"send_teams_approval_card: empty approver_upn for {requisition_id}")
-        return
-    try:
-        token = _get_graph_token()
-        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-
-        line_rows = [
-            {"type": "ColumnSet", "columns": [
-                {"type": "Column", "width": "stretch", "items": [
-                    {"type": "TextBlock", "text": str(_v(item, "itemDescription", "ItemDescription", default="")), "wrap": True}
-                ]},
-                {"type": "Column", "width": "auto", "items": [
-                    {"type": "TextBlock", "text": f"x{_v(item, 'quantity', 'Quantity', default=1)}"}
-                ]},
-                {"type": "Column", "width": "auto", "items": [
-                    {"type": "TextBlock", "text": f"${float(_v(item, 'unitPriceEstimate', 'UnitPriceEstimate')):,.2f}"}
-                ]},
-            ]}
-            for item in line_items
-        ]
-
-        title = "AP Approval Required" if is_ap else "Approval Required"
-        skip_note = [{"type": "TextBlock", "text": "Note: Manager approval step was skipped.",
-                      "color": "warning", "size": "small"}] if manager_skipped else []
-
-        card = {
-            "type": "AdaptiveCard",
-            "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-            "version": "1.4",
-            "body": [
-                {"type": "TextBlock", "text": "Macrodyne Technologies — IT Requisition System",
-                 "size": "small", "color": "accent"},
-                {"type": "TextBlock", "text": title, "size": "large", "weight": "bolder"},
-                *skip_note,
-                {"type": "FactSet", "facts": [
-                    {"title": "Requisition", "value": requisition_id},
-                    {"title": "Requested by", "value": f"{requestor_name}{f' — {dept}' if dept else ''}"},
-                    {"title": "Reason", "value": reason},
-                    {"title": "Total estimate", "value": f"{currency} ${total:,.2f}"},
-                ]},
-                {"type": "TextBlock", "text": "Items", "weight": "bolder", "separator": True},
-                *line_rows,
-            ],
-            "actions": [
-                {"type": "Action.OpenUrl", "title": "✓ Approve", "url": approve_url, "style": "positive"},
-                {"type": "Action.OpenUrl", "title": "✗ Reject",  "url": reject_url, "style": "destructive"},
-            ]
-        }
-
-        chat_id = _get_or_create_chat(approver_upn)
-        message = {
-            "body": {"contentType": "html", "content": "<attachment id='card'></attachment>"},
-            "attachments": [{
-                "id": "card",
-                "contentType": "application/vnd.microsoft.card.adaptive",
-                "content": json.dumps(card)
-            }]
-        }
-        r = requests.post(
-            f"https://graph.microsoft.com/v1.0/chats/{chat_id}/messages",
-            headers=headers, json=message
-        )
-        if not r.ok:
-            logger.error(f"Teams card failed {r.status_code} for {requisition_id}: {r.text[:300]}")
-        r.raise_for_status()
-        logger.info(f"Teams approval card sent to {approver_upn} for {requisition_id}")
-    except Exception as e:
-        logger.exception(f"Teams card error for {requisition_id}: {e}")
-        # Non-fatal — email already sent
-
 
 def send_email(sender: str, to: str, cc: str, subject: str, body: str):
     if not to:
@@ -1266,13 +1145,6 @@ def _send_manager_approval_email(
               <td><strong>{currency} ${total:,.2f}</strong></td></tr>
         </table>
         {_line_items_table(line_items)}
-        <p style='font-size:13px;color:#107C10;font-weight:600'>
-          &#10003; Please action this requisition in Microsoft Teams.
-        </p>
-        <p style='font-size:12px;color:#757575'>
-          You have received an Adaptive Card in your Teams chat with Approve and Reject buttons.<br>
-          If you cannot find it, use these fallback links:<br>
-        </p>
         {_approval_buttons(approve_url, reject_url)}
         <p style='font-size:11px;color:#757575'>
           Approval links expire in {APPROVAL_TOKEN_EXPIRY_HOURS} hours.
@@ -1280,13 +1152,6 @@ def _send_manager_approval_email(
 
     send_email(sender=notification_sender, to=manager_upn, cc="",
                subject=f"Approval required — {requisition_id}", body=body)
-    send_teams_approval_card(
-        approver_upn=manager_upn, requisition_id=requisition_id,
-        requestor_name=requestor_name, dept=dept, reason=reason,
-        total=total, currency=currency, line_items=line_items,
-        approve_url=approve_url, reject_url=reject_url,
-        manager_skipped=False, is_ap=False
-    )
 
 
 def _send_ap_approval_email(
@@ -1320,24 +1185,10 @@ def _send_ap_approval_email(
               <td><strong>{currency} ${total:,.2f}</strong></td></tr>
         </table>
         {_line_items_table(line_items)}
-        <p style='font-size:13px;color:#107C10;font-weight:600'>
-          &#10003; Please action this requisition in Microsoft Teams.
-        </p>
-        <p style='font-size:12px;color:#757575'>
-          You have received an Adaptive Card in your Teams chat with Approve and Reject buttons.<br>
-          If you cannot find it, use these fallback links:<br>
-        </p>
         {_approval_buttons(approve_url, reject_url)}""")
 
     send_email(sender=notification_sender, to=ap_upn, cc="",
                subject=f"AP approval required — {requisition_id}", body=body)
-    send_teams_approval_card(
-        approver_upn=ap_upn, requisition_id=requisition_id,
-        requestor_name=requestor_name, dept=dept, reason=reason,
-        total=total, currency=currency, line_items=line_items,
-        approve_url=approve_url, reject_url=reject_url,
-        manager_skipped=manager_skipped, is_ap=True
-    )
 
 
 def _send_fulfillment_email(
