@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Macrodyne — Requisition Approval</title>
+  <script src="https://alcdn.msauth.net/browser/2.38.0/js/msal-browser.min.js"></script>
+  <style>
+    :root {
+      --blue:       #0063B1;
+      --blue-dark:  #004F8F;
+      --blue-light: #EBF3FB;
+      --blue-mid:   #C7DEF5;
+      --green:      #107C10;
+      --green-light:#DFF6DD;
+      --red:        #A4262C;
+      --red-light:  #FDE7E9;
+      --text:       #1B1B1B;
+      --text-mid:   #4A4A4A;
+      --text-light: #767676;
+      --border:     #D0D0D0;
+      --bg:         #F4F6F9;
+      --white:      #FFFFFF;
+      --radius:     6px;
+      --shadow:     0 2px 8px rgba(0,0,0,.10);
+      --shadow-lg:  0 4px 20px rgba(0,0,0,.14);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .header {
+      background: var(--blue);
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      height: 52px;
+      gap: 16px;
+    }
+    .header-logo { color: white; font-size: 15px; font-weight: 700; }
+    .header-sep { width: 1px; height: 24px; background: rgba(255,255,255,.3); }
+    .header-title { color: rgba(255,255,255,.85); font-size: 13px; }
+    .header-user {
+      margin-left: auto; color: rgba(255,255,255,.85);
+      font-size: 12px; display: flex; align-items: center; gap: 8px;
+    }
+    .header-avatar {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: rgba(255,255,255,.2);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 600; color: white;
+    }
+
+    /* ── Screens ── */
+    #auth-screen, #loading-screen, #main-screen, #done-screen, #error-screen {
+      display: none;
+    }
+    #auth-screen {
+      min-height: calc(100vh - 52px);
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center; padding: 24px;
+    }
+
+    .center-card {
+      background: var(--white); border-radius: var(--radius);
+      box-shadow: var(--shadow-lg); padding: 40px;
+      max-width: 480px; width: 100%; text-align: center;
+    }
+    .center-card h2 { font-size: 20px; margin-bottom: 8px; color: var(--blue); }
+    .center-card p { color: var(--text-mid); font-size: 14px; margin-bottom: 24px; line-height: 1.5; }
+
+    .spinner-wrap {
+      min-height: calc(100vh - 52px);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Main ── */
+    .container { max-width: 720px; margin: 0 auto; padding: 24px 16px 80px; }
+
+    .page-title { font-size: 22px; font-weight: 600; color: var(--blue-dark); margin-bottom: 4px; }
+    .page-sub { font-size: 13px; color: var(--text-light); margin-bottom: 24px; }
+
+    .card {
+      background: var(--white); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow);
+      margin-bottom: 16px; overflow: hidden;
+    }
+    .card-header {
+      background: var(--blue-light); border-bottom: 1px solid var(--blue-mid);
+      padding: 12px 20px; display: flex; align-items: center; gap: 8px;
+    }
+    .card-header-icon {
+      width: 20px; height: 20px; background: var(--blue); border-radius: 3px;
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-size: 11px;
+    }
+    .card-header-title { font-size: 13px; font-weight: 600; color: var(--blue-dark); }
+    .card-body { padding: 20px; }
+
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .info-item label {
+      display: block; font-size: 11px; font-weight: 600;
+      color: var(--text-light); text-transform: uppercase;
+      letter-spacing: .05em; margin-bottom: 4px;
+    }
+    .info-item span { font-size: 14px; color: var(--text); }
+
+    /* ── Line items table ── */
+    .items-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .items-table th {
+      background: var(--blue); color: white;
+      padding: 8px 12px; text-align: left; font-weight: 600;
+    }
+    .items-table th:not(:first-child) { text-align: right; }
+    .items-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+    .items-table td:not(:first-child) { text-align: right; }
+    .items-table tr:last-child td { border-bottom: none; }
+    .items-total {
+      display: flex; justify-content: space-between;
+      padding: 12px 0 0; font-weight: 700; font-size: 15px;
+      border-top: 2px solid var(--border); margin-top: 8px;
+    }
+
+    /* ── Action section ── */
+    .action-section { margin-top: 8px; }
+    .field { margin-bottom: 16px; }
+    .field label { display: block; font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+    .field textarea {
+      width: 100%; border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 8px 12px; font-size: 14px; font-family: inherit;
+      color: var(--text); resize: vertical; min-height: 80px; outline: none;
+    }
+    .field textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(0,99,177,.15); }
+
+    .action-buttons { display: flex; gap: 12px; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 10px 24px; border-radius: var(--radius);
+      font-size: 14px; font-weight: 600; font-family: inherit;
+      cursor: pointer; border: none; transition: all .15s;
+    }
+    .btn-approve { background: var(--green); color: white; }
+    .btn-approve:hover { background: #0a5c0a; }
+    .btn-approve:disabled { background: var(--border); color: var(--text-light); cursor: not-allowed; }
+    .btn-reject { background: var(--white); color: var(--red); border: 1px solid var(--red); }
+    .btn-reject:hover { background: var(--red-light); }
+    .btn-reject:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* ── Done / Error screens ── */
+    #done-screen, #error-screen {
+      min-height: calc(100vh - 52px);
+      flex-direction: column; align-items: center; justify-content: center; padding: 24px;
+    }
+    .done-icon {
+      width: 56px; height: 56px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 28px; margin: 0 auto 20px;
+    }
+    .done-icon.approve { background: var(--green-light); }
+    .done-icon.reject  { background: var(--red-light); }
+
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 3px;
+      font-size: 12px; font-weight: 600;
+    }
+    .badge-pending-manager { background: #FFF4CE; color: #7A5C00; }
+    .badge-pending-ap      { background: #EBF3FB; color: #004F8F; }
+
+    .btn-primary { background: var(--blue); color: white; }
+    .btn-primary:hover { background: var(--blue-dark); }
+
+    .spinner-inline {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,.4);
+      border-top-color: white; border-radius: 50%;
+      animation: spin .6s linear infinite; display: inline-block;
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-logo">Macrodyne Technologies</div>
+  <div class="header-sep"></div>
+  <div class="header-title">Requisition Approval</div>
+  <div class="header-user">
+    <div class="header-avatar" id="user-initials">–</div>
+    <span id="user-name-header"></span>
+  </div>
+</div>
+
+<!-- Auth screen -->
+<div id="auth-screen" style="display:none;flex-direction:column;align-items:center;justify-content:center;min-height:calc(100vh - 52px);padding:24px">
+  <div class="center-card">
+    <h2>Sign in required</h2>
+    <p>Please sign in with your Macrodyne Microsoft account to view and action this requisition.</p>
+    <button class="btn btn-primary" onclick="signIn()" style="width:100%;justify-content:center">
+      Sign in with Microsoft
+    </button>
+  </div>
+</div>
+
+<!-- Loading screen -->
+<div id="loading-screen" style="display:none">
+  <div class="spinner-wrap"><div class="spinner"></div></div>
+</div>
+
+<!-- Main screen -->
+<div id="main-screen" style="display:none">
+  <div class="container">
+    <div class="page-title">Requisition Approval</div>
+    <div class="page-sub" id="approval-context"></div>
+
+    <!-- Requisition details -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-header-icon">📋</div>
+        <div class="card-header-title">Requisition Details</div>
+      </div>
+      <div class="card-body">
+        <div class="info-grid">
+          <div class="info-item">
+            <label>Requisition ID</label>
+            <span id="detail-id" style="font-family:monospace;font-weight:700;color:var(--blue)"></span>
+          </div>
+          <div class="info-item">
+            <label>Status</label>
+            <span id="detail-status"></span>
+          </div>
+          <div class="info-item">
+            <label>Requested by</label>
+            <span id="detail-requestor"></span>
+          </div>
+          <div class="info-item">
+            <label>Total estimate</label>
+            <span id="detail-total" style="font-weight:700;font-size:16px"></span>
+          </div>
+          <div class="info-item" style="grid-column:1/-1">
+            <label>Reason</label>
+            <span id="detail-reason"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Line items -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-header-icon">🛒</div>
+        <div class="card-header-title">Items</div>
+      </div>
+      <div class="card-body">
+        <table class="items-table">
+          <thead>
+            <tr>
+              <th>Description</th>
+              <th>Qty</th>
+              <th>Unit Est.</th>
+              <th>Total Est.</th>
+            </tr>
+          </thead>
+          <tbody id="items-tbody"></tbody>
+        </table>
+        <div class="items-total">
+          <span>Estimated Total</span>
+          <span id="items-total"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Action -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-header-icon">✓</div>
+        <div class="card-header-title">Your Decision</div>
+      </div>
+      <div class="card-body action-section">
+        <div class="field">
+          <label>Comment <span style="color:var(--text-light);font-weight:400">(optional)</span></label>
+          <textarea id="comment" placeholder="Add a comment or reason for your decision…"></textarea>
+        </div>
+        <div class="action-buttons">
+          <button class="btn btn-approve" id="btn-approve" onclick="submitDecision('ApproveByUPN')">
+            ✓ Approve
+          </button>
+          <button class="btn btn-reject" id="btn-reject" onclick="submitDecision('RejectByUPN')">
+            ✗ Reject
+          </button>
+        </div>
+        <div id="action-error" style="display:none;margin-top:12px;padding:10px 14px;background:var(--red-light);border-radius:var(--radius);font-size:13px;color:var(--red)"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Done screen -->
+<div id="done-screen" style="display:none;flex-direction:column;align-items:center;justify-content:center;min-height:calc(100vh - 52px);padding:24px">
+  <div class="center-card">
+    <div class="done-icon" id="done-icon"></div>
+    <h2 id="done-title"></h2>
+    <p id="done-msg" style="margin-top:8px"></p>
+    <button class="btn btn-primary" onclick="window.close()" style="margin-top:24px">Close</button>
+  </div>
+</div>
+
+<!-- Error screen -->
+<div id="error-screen" style="display:none;flex-direction:column;align-items:center;justify-content:center;min-height:calc(100vh - 52px);padding:24px">
+  <div class="center-card">
+    <h2 style="color:var(--red)">Unable to Load Requisition</h2>
+    <p id="error-msg" style="margin-top:8px"></p>
+    <button class="btn btn-primary" onclick="location.reload()" style="margin-top:24px">Try again</button>
+  </div>
+</div>
+
+<script>
+const CONFIG = {
+  clientId:    '6bfa3adb-1f7d-44e4-8cb9-38be4a107549',
+  tenantId:    '4c9a50a1-c27f-4044-8025-b59b5b804d16',
+  redirectUri: 'https://orange-bay-0e0de3210.7.azurestaticapps.net/requisition/approve/',
+  backendUrl:  'https://macrodyne-requisition-g7f9dxcxetg0hwcc.canadacentral-01.azurewebsites.net',
+};
+
+const GRAPH_SCOPES = [
+  'https://graph.microsoft.com/User.Read',
+];
+
+let msalInstance = null;
+let currentUser  = {};
+let requisitionData = null;
+
+// ── MSAL ──────────────────────────────────────────────────────────────────────
+
+async function initMsal() {
+  msalInstance = new msal.PublicClientApplication({
+    auth: {
+      clientId:    CONFIG.clientId,
+      authority:   `https://login.microsoftonline.com/${CONFIG.tenantId}`,
+      redirectUri: CONFIG.redirectUri,
+    },
+    cache: { cacheLocation: 'sessionStorage' },
+  });
+
+  await msalInstance.initialize();
+  const response = await msalInstance.handleRedirectPromise();
+  if (response) msalInstance.setActiveAccount(response.account);
+
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length > 0) {
+    msalInstance.setActiveAccount(accounts[0]);
+    await onSignedIn();
+  } else {
+    showScreen('auth');
+  }
+}
+
+function signIn() {
+  msalInstance.loginRedirect({ scopes: GRAPH_SCOPES });
+}
+
+async function onSignedIn() {
+  showScreen('loading');
+  const account = msalInstance.getActiveAccount();
+  currentUser.upn  = account.username;
+  currentUser.name = account.name || account.username;
+
+  document.getElementById('user-name-header').textContent = currentUser.name;
+  const initials = currentUser.name.split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase();
+  document.getElementById('user-initials').textContent = initials;
+
+  // Get requisition ID from URL
+  const params = new URLSearchParams(window.location.search);
+  const reqId  = params.get('req');
+
+  if (!reqId) {
+    showError('No requisition ID provided. Please use the link from your approval email.');
+    return;
+  }
+
+  // Fetch requisition details from backend
+  try {
+    const url = `${CONFIG.backendUrl}/api/pending?requisitionID=${encodeURIComponent(reqId)}&approverUPN=${encodeURIComponent(currentUser.upn)}`;
+    const r = await fetch(url);
+    const data = await r.json();
+
+    if (!data.success) {
+      showError(data.error || 'Unable to load requisition. Please check you are signed in with the correct account.');
+      return;
+    }
+
+    requisitionData = data;
+    populatePage(data);
+    showScreen('main');
+
+  } catch(e) {
+    showError('Could not reach the requisition service. Please check your connection and try again.');
+  }
+}
+
+function populatePage(data) {
+  const req   = data.requisition;
+  const items = data.lineItems;
+
+  document.getElementById('detail-id').textContent = req.requisitionID;
+  document.getElementById('detail-reason').textContent = req.reason;
+  document.getElementById('detail-requestor').textContent = req.requestorName;
+  document.getElementById('detail-total').textContent =
+    `${req.currency} $${req.totalAmount.toLocaleString('en-CA', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+
+  // Status badge
+  const statusLabels = {
+    'PendingManager': 'Pending Manager Approval',
+    'PendingAP':      'Pending AP Approval',
+  };
+  const statusClasses = {
+    'PendingManager': 'badge-pending-manager',
+    'PendingAP':      'badge-pending-ap',
+  };
+  const statusEl = document.getElementById('detail-status');
+  statusEl.innerHTML = `<span class="badge ${statusClasses[req.status] || ''}">${statusLabels[req.status] || req.status}</span>`;
+
+  // Context line
+  const contextEl = document.getElementById('approval-context');
+  contextEl.textContent = req.status === 'PendingManager'
+    ? 'This requisition is awaiting your manager approval.'
+    : 'This requisition is awaiting AP approval.';
+
+  // Line items
+  const tbody = document.getElementById('items-tbody');
+  tbody.innerHTML = items.map(item => {
+    const lineTotal = item.quantity * item.unitPriceEstimate;
+    return `<tr>
+      <td>${escHtml(item.itemDescription)}</td>
+      <td>${item.quantity}</td>
+      <td>$${item.unitPriceEstimate.toLocaleString('en-CA', {minimumFractionDigits:2})}</td>
+      <td>$${lineTotal.toLocaleString('en-CA', {minimumFractionDigits:2})}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('items-total').textContent =
+    `${req.currency} $${req.totalAmount.toLocaleString('en-CA', {minimumFractionDigits:2})}`;
+}
+
+// ── Actions ───────────────────────────────────────────────────────────────────
+
+async function submitDecision(action) {
+  const btnApprove = document.getElementById('btn-approve');
+  const btnReject  = document.getElementById('btn-reject');
+  const errorEl    = document.getElementById('action-error');
+  const comment    = document.getElementById('comment').value.trim();
+  const req        = requisitionData.requisition;
+
+  if (action === 'RejectByUPN' && !comment) {
+    errorEl.textContent = 'Please provide a reason for rejection.';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  errorEl.style.display = 'none';
+  btnApprove.disabled = true;
+  btnReject.disabled  = true;
+  btnApprove.innerHTML = action === 'ApproveByUPN'
+    ? '<span class="spinner-inline"></span> Approving…'
+    : '✓ Approve';
+  btnReject.innerHTML = action === 'RejectByUPN'
+    ? '<span class="spinner-inline" style="border-top-color:var(--red)"></span> Rejecting…'
+    : '✗ Reject';
+
+  try {
+    const payload = {
+      action,
+      requisitionID: req.requisitionID,
+      approverUPN:   currentUser.upn,
+      approverName:  currentUser.name,
+      comment,
+    };
+
+    const r = await fetch(`${CONFIG.backendUrl}/api/requisition`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload),
+    });
+    const result = await r.json();
+
+    if (result.success) {
+      showDone(action === 'ApproveByUPN', req.requisitionID);
+    } else {
+      errorEl.textContent = result.error || 'An error occurred. Please try again.';
+      errorEl.style.display = 'block';
+      btnApprove.disabled = false;
+      btnReject.disabled  = false;
+      btnApprove.innerHTML = '✓ Approve';
+      btnReject.innerHTML  = '✗ Reject';
+    }
+  } catch(e) {
+    errorEl.textContent = 'Could not reach the requisition service. Please check your connection.';
+    errorEl.style.display = 'block';
+    btnApprove.disabled = false;
+    btnReject.disabled  = false;
+    btnApprove.innerHTML = '✓ Approve';
+    btnReject.innerHTML  = '✗ Reject';
+  }
+}
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
+
+function showScreen(name) {
+  ['auth','loading','main','done','error'].forEach(s => {
+    const el = document.getElementById(`${s}-screen`);
+    if (el) el.style.display = 'none';
+  });
+  const target = document.getElementById(`${name}-screen`);
+  if (target) target.style.display = ['auth','done','error'].includes(name) ? 'flex' : 'block';
+  if (name === 'loading') {
+    target.style.display = 'block';
+  }
+}
+
+function showDone(approved, reqId) {
+  const icon  = document.getElementById('done-icon');
+  const title = document.getElementById('done-title');
+  const msg   = document.getElementById('done-msg');
+
+  if (approved) {
+    icon.textContent  = '✓';
+    icon.className    = 'done-icon approve';
+    title.textContent = 'Approved';
+    msg.textContent   = `Requisition ${reqId} has been approved. The next step in the process has been triggered and the requestor has been notified.`;
+  } else {
+    icon.textContent  = '✗';
+    icon.className    = 'done-icon reject';
+    title.textContent = 'Rejected';
+    msg.textContent   = `Requisition ${reqId} has been rejected. The requestor has been notified.`;
+  }
+  showScreen('done');
+}
+
+function showError(msg) {
+  document.getElementById('error-msg').textContent = msg;
+  showScreen('error');
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+
+initMsal().catch(err => {
+  console.error('MSAL init error:', err);
+  showScreen('auth');
+});
+</script>
+</body>
+</html>
