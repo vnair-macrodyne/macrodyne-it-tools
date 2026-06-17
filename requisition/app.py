@@ -17,7 +17,7 @@ Environment variables (set in Azure App Service Application Settings):
 
 All SharePoint writes use the cached delegated token (vnair@).
 Run the app once interactively to prime the cache.
-# Deployment: 2026-06-16-v6.14
+# Deployment: 2026-06-17-v6.15
 """
 
 import os
@@ -1010,8 +1010,8 @@ def load_roles() -> dict:
 
 
 def get_requisition(requisition_id: str) -> dict | None:
-    # RequisitionID is a real Text column on Requisitions list — plain filter works
-    items = sp_get_items(REQ_SITE, LIST_REQ, f"RequisitionID eq '{requisition_id}'")
+    # Filter on Title (internal name) — SP 500s on the RequisitionID column filter
+    items = sp_get_items(REQ_SITE, LIST_REQ, f"Title eq '{requisition_id}'")
     return items[0] if items else None
 
 
