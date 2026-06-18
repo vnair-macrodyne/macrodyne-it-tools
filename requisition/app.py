@@ -17,7 +17,7 @@ Environment variables (set in Azure App Service Application Settings):
 
 All SharePoint writes use the cached delegated token (vnair@).
 Run the app once interactively to prime the cache.
-# Deployment: 2026-06-17-v6.15
+# Deployment: 2026-06-17-v6.16
 """
 
 import os
@@ -112,6 +112,14 @@ def requisition_handler():
             result = handle_approve_by_upn(payload)
         elif action == "RejectByUPN":
             result = handle_reject_by_upn(payload)
+        elif action == "MarkOrderedByUPN":
+            result = handle_mark_ordered_by_upn(payload)
+        elif action == "MarkReceivedByUPN":
+            result = handle_mark_received_by_upn(payload)
+        elif action == "ConfirmByUPN":
+            result = handle_confirm_by_upn(payload)
+        elif action == "RejectAtPurchaseByUPN":
+            result = handle_reject_at_purchase_by_upn(payload)
         elif action == "Cancel":
             result = handle_cancel(payload)
         elif action == "MarkOrdered":
@@ -210,6 +218,96 @@ def pending_handler():
         )
     except Exception as e:
         logger.exception(f"Error in pending_handler for {requisition_id}")
+        return Response(
+            json.dumps({"success": False, "error": str(e)}),
+            status=500, mimetype="application/json"
+        )
+
+
+@app.route("/api/fulfill", methods=["GET"])
+def fulfill_handler():
+    """Return requisition details for fulfillment/receipt views.
+    Used by Purchaser (Mark Ordered, Mark Received) and Requestor (Confirm Receipt).
+    """
+    requisition_id = request.args.get("requisitionID", "")
+    actor_upn      = request.args.get("actorUPN", "")
+
+    if not requisition_id or not actor_upn:
+        return Response(
+            json.dumps({"success": False, "error": "Missing requisitionID or actorUPN"}),
+            status=400, mimetype="application/json"
+        )
+
+    try:
+        req = get_requisition(requisition_id)
+        if not req:
+            return Response(
+                json.dumps({"success": False, "error": "Requisition not found"}),
+                status=404, mimetype="application/json"
+            )
+
+        current_status = req.get("Status", "")
+        roles = load_roles()
+
+        # Determine allowed actions for this actor+status combination
+        allowed_actions = []
+        actor_emp_no = _resolve_emp_no_from_upn(actor_upn)
+
+        if current_status == "ApprovedPendingPurchase":
+            fulfill_upn = _resolve_fulfill_upn(req.get("RequestorEmpNo", ""), roles)
+            if actor_upn.lower() == fulfill_upn.lower():
+                allowed_actions = ["MarkOrdered", "RejectAtPurchase"]
+        elif current_status == "Ordered":
+            fulfill_upn = _resolve_fulfill_upn(req.get("RequestorEmpNo", ""), roles)
+            if actor_upn.lower() == fulfill_upn.lower():
+                allowed_actions = ["MarkReceived"]
+        elif current_status == "ReceivedByPurchaser":
+            requestor_upn = req.get("RequestorUPN", "")
+            if actor_upn.lower() == requestor_upn.lower():
+                allowed_actions = ["Confirm"]
+
+        if not allowed_actions:
+            return Response(
+                json.dumps({
+                    "success": False,
+                    "error": f"No actions available for you on this requisition (status: {current_status})"
+                }),
+                status=403, mimetype="application/json"
+            )
+
+        line_items = get_line_items(requisition_id)
+
+        return Response(
+            json.dumps({
+                "success":      True,
+                "allowedActions": allowed_actions,
+                "requisition": {
+                    "requisitionID":  requisition_id,
+                    "status":         current_status,
+                    "requestorName":  req.get("RequestorName", ""),
+                    "requestorEmpNo": req.get("RequestorEmpNo", ""),
+                    "requestorUPN":   req.get("RequestorUPN", ""),
+                    "reason":         req.get("Reason", ""),
+                    "currency":       req.get("Currency", "CAD"),
+                    "totalAmount":    float(req.get("TotalAmount", 0)),
+                    "managerUPN":     req.get("ManagerUPN", ""),
+                },
+                "lineItems": [
+                    {
+                        "id":                item.get("ID"),
+                        "itemDescription":   item.get("ItemDescription", ""),
+                        "quantity":          item.get("Quantity", 1),
+                        "unitPriceEstimate": float(item.get("UnitPriceEstimate", 0)),
+                        "vendorAtPurchase":  item.get("VendorAtPurchase", ""),
+                        "actualUnitPrice":   float(item.get("ActualUnitPrice") or 0),
+                    }
+                    for item in line_items
+                ]
+            }),
+            status=200, mimetype="application/json"
+        )
+    except Exception as e:
+        logger.exception(f"Error in fulfill_handler for {requisition_id}")
         return Response(
             json.dumps({"success": False, "error": str(e)}),
             status=500, mimetype="application/json"
@@ -447,6 +545,34 @@ def handle_submit(payload: dict) -> dict:
 
 
 # ── Approval handling ──────────────────────────────────────────────────────────
+
+def handle_mark_ordered_by_upn(payload: dict) -> dict:
+    """Purchaser marks requisition as ordered from SPA."""
+    actor_upn = payload.pop("actorUPN", "")
+    payload["actorEmpNo"] = _resolve_emp_no_from_upn(actor_upn)
+    return handle_mark_ordered(payload)
+
+
+def handle_mark_received_by_upn(payload: dict) -> dict:
+    """Purchaser marks items received from SPA."""
+    actor_upn = payload.pop("actorUPN", "")
+    payload["actorEmpNo"] = _resolve_emp_no_from_upn(actor_upn)
+    return handle_mark_received(payload)
+
+
+def handle_confirm_by_upn(payload: dict) -> dict:
+    """Requestor confirms receipt from SPA."""
+    actor_upn = payload.pop("actorUPN", "")
+    payload["actorEmpNo"] = _resolve_emp_no_from_upn(actor_upn)
+    return handle_confirm(payload)
+
+
+def handle_reject_at_purchase_by_upn(payload: dict) -> dict:
+    """Purchaser rejects at purchase from SPA."""
+    actor_upn = payload.pop("actorUPN", "")
+    payload["actorEmpNo"] = _resolve_emp_no_from_upn(actor_upn)
+    return handle_reject_at_purchase(payload)
+
 
 def handle_approve_by_upn(payload: dict) -> dict:
     """Approver-initiated approval from SPA. Identity proven by M365 login."""
@@ -1340,7 +1466,12 @@ def _send_fulfillment_email(
               <td><strong>{currency} ${total:,.2f}</strong></td></tr>
         </table>
         {_line_items_table(line_items)}
-        <p>Please process this order and mark it as Ordered in the Requisitions app once purchased.</p>""")
+        <p>Please process this order and mark it as Ordered once purchased.</p>
+        <p>Visit the fulfillment page to update the status:<br>
+        <a href="https://orange-bay-0e0de3210.7.azurestaticapps.net/requisition/fulfill/?req={requisition_id}"
+           style="color:#0063B1;font-weight:700">
+           https://orange-bay-0e0de3210.7.azurestaticapps.net/requisition/fulfill/?req={requisition_id}
+        </a></p>""")
 
     cc_parts = [requestor_upn, manager_upn]
     cc = ",".join(p for p in cc_parts if p)
@@ -1372,8 +1503,13 @@ def _received_email_body(requisition_id, requestor_name, received_utc, receipt_d
           <tr><td style='padding:4px 16px 4px 0;color:#757575'>Arrived</td>
               <td>{received_utc[:10]}</td></tr>
         </table>
-        <p>Please confirm receipt in the Requisitions app within
-           <strong>{receipt_days} business days</strong>.</p>""")
+        <p>Please confirm receipt within <strong>{receipt_days} business days</strong> by visiting the link below:</p>
+        <p style='margin-top:8px'>
+          <a href='https://orange-bay-0e0de3210.7.azurestaticapps.net/requisition/fulfill/?req={requisition_id}'
+             style='color:#0063B1;font-weight:700'>
+            https://orange-bay-0e0de3210.7.azurestaticapps.net/requisition/fulfill/?req={requisition_id}
+          </a>
+        </p>""")
 
 
 def _rejection_email_body(requisition_id, requestor_name, reason):
