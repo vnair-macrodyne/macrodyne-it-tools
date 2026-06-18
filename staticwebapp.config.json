@@ -1,0 +1,19 @@
+{
+  "routes": [
+    {
+      "route": "/requisition/approve/*",
+      "serve": "/requisition/approve/index.html",
+      "statusCode": 200
+    },
+    {
+      "route": "/requisition/fulfill/*",
+      "serve": "/requisition/fulfill/index.html",
+      "statusCode": 200
+    },
+    {
+      "route": "/requisition/*",
+      "serve": "/requisition/index.html",
+      "statusCode": 200
+    }
+  ]
+}
