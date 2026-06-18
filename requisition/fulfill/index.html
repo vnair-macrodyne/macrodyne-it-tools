@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Macrodyne — Requisition Fulfillment</title>
+  <script src="https://alcdn.msauth.net/browser/2.38.0/js/msal-browser.min.js"></script>
+  <style>
+    :root {
+      --blue:       #0063B1;
+      --blue-dark:  #004F8F;
+      --blue-light: #EBF3FB;
+      --blue-mid:   #C7DEF5;
+      --green:      #107C10;
+      --green-light:#DFF6DD;
+      --red:        #A4262C;
+      --red-light:  #FDE7E9;
+      --amber:      #7A5C00;
+      --amber-light:#FFF4CE;
+      --text:       #1B1B1B;
+      --text-mid:   #4A4A4A;
+      --text-light: #767676;
+      --border:     #D0D0D0;
+      --bg:         #F4F6F9;
+      --white:      #FFFFFF;
+      --radius:     6px;
+      --shadow:     0 2px 8px rgba(0,0,0,.10);
+      --shadow-lg:  0 4px 20px rgba(0,0,0,.14);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    .header {
+      background: var(--blue); padding: 0 24px;
+      display: flex; align-items: center; height: 52px; gap: 16px;
+    }
+    .header-logo { color: white; font-size: 15px; font-weight: 700; }
+    .header-sep { width: 1px; height: 24px; background: rgba(255,255,255,.3); }
+    .header-title { color: rgba(255,255,255,.85); font-size: 13px; }
+    .header-user {
+      margin-left: auto; color: rgba(255,255,255,.85);
+      font-size: 12px; display: flex; align-items: center; gap: 8px;
+    }
+    .header-avatar {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: rgba(255,255,255,.2);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 600; color: white;
+    }
+
+    .spinner-wrap { min-height: calc(100vh - 52px); display: flex; align-items: center; justify-content: center; }
+    .spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .container { max-width: 720px; margin: 0 auto; padding: 24px 16px 80px; }
+    .page-title { font-size: 22px; font-weight: 600; color: var(--blue-dark); margin-bottom: 4px; }
+    .page-sub { font-size: 13px; color: var(--text-light); margin-bottom: 24px; }
+
+    .card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 16px; overflow: hidden; }
+    .card-header { background: var(--blue-light); border-bottom: 1px solid var(--blue-mid); padding: 12px 20px; display: flex; align-items: center; gap: 8px; }
+    .card-header-icon { width: 20px; height: 20px; background: var(--blue); border-radius: 3px; display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; }
+    .card-header-title { font-size: 13px; font-weight: 600; color: var(--blue-dark); }
+    .card-body { padding: 20px; }
+
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .info-item label { display: block; font-size: 11px; font-weight: 600; color: var(--text-light); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+    .info-item span { font-size: 14px; color: var(--text); }
+
+    .items-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .items-table th { background: var(--blue); color: white; padding: 8px 12px; text-align: left; font-weight: 600; }
+    .items-table th:not(:first-child) { text-align: right; }
+    .items-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .items-table td:not(:first-child) { text-align: right; }
+    .items-table tr:last-child td { border-bottom: none; }
+    .items-table input { width: 100%; border: 1px solid var(--border); border-radius: 4px; padding: 5px 8px; font-size: 13px; font-family: inherit; text-align: right; }
+    .items-table input:focus { border-color: var(--blue); outline: none; }
+    .items-table .vendor-input { text-align: left; }
+
+    .items-total { display: flex; justify-content: space-between; padding: 12px 0 0; font-weight: 700; font-size: 15px; border-top: 2px solid var(--border); margin-top: 8px; }
+
+    .field { margin-bottom: 16px; }
+    .field label { display: block; font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+    .field select, .field input[type=text] {
+      width: 100%; border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 8px 12px; font-size: 14px; font-family: inherit; color: var(--text);
+      background: var(--white); outline: none;
+    }
+    .field select:focus, .field input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(0,99,177,.15); }
+    .field textarea { width: 100%; border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; font-size: 14px; font-family: inherit; color: var(--text); resize: vertical; min-height: 72px; outline: none; }
+    .field textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(0,99,177,.15); }
+
+    .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 24px; border-radius: var(--radius); font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; border: none; transition: all .15s; }
+    .btn-primary { background: var(--blue); color: white; }
+    .btn-primary:hover { background: var(--blue-dark); }
+    .btn-primary:disabled { background: var(--border); color: var(--text-light); cursor: not-allowed; }
+    .btn-danger { background: var(--white); color: var(--red); border: 1px solid var(--red); }
+    .btn-danger:hover { background: var(--red-light); }
+    .btn-success { background: var(--green); color: white; }
+    .btn-success:hover { background: #0a5c0a; }
+    .btn-success:disabled { background: var(--border); color: var(--text-light); cursor: not-allowed; }
+
+    .action-buttons { display: flex; gap: 12px; flex-wrap: wrap; }
+    .error-msg { display: none; margin-top: 12px; padding: 10px 14px; background: var(--red-light); border-radius: var(--radius); font-size: 13px; color: var(--red); }
+
+    .center-card { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow-lg); padding: 40px; max-width: 480px; width: 100%; text-align: center; }
+    .center-card h2 { font-size: 20px; margin-bottom: 8px; color: var(--blue); }
+    .center-card p { color: var(--text-mid); font-size: 14px; margin-bottom: 24px; line-height: 1.5; }
+
+    .done-icon { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; margin: 0 auto 20px; }
+    .done-icon.success { background: var(--green-light); }
+    .done-icon.warn { background: var(--amber-light); }
+
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 12px; font-weight: 600; }
+    .badge-approved   { background: var(--green-light); color: var(--green); }
+    .badge-ordered    { background: var(--blue-light); color: var(--blue-dark); }
+    .badge-received   { background: var(--amber-light); color: var(--amber); }
+
+    .spinner-inline { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.4); border-top-color: white; border-radius: 50%; animation: spin .6s linear infinite; display: inline-block; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-logo">Macrodyne Technologies</div>
+  <div class="header-sep"></div>
+  <div class="header-title">Requisition Fulfillment</div>
+  <div class="header-user">
+    <div class="header-avatar" id="user-initials">–</div>
+    <span id="user-name-header"></span>
+  </div>
+</div>
+
+<!-- Auth -->
+<div id="auth-screen" style="display:none;flex-direction:column;align-items:center;justify-content:center;min-height:calc(100vh - 52px);padding:24px">
+  <div class="center-card">
+    <h2>Sign in required</h2>
+    <p>Please sign in with your Macrodyne Microsoft account to continue.</p>
+    <button class="btn btn-primary" onclick="signIn()" style="width:100%;justify-content:center">Sign in with Microsoft</button>
+  </div>
+</div>
+
+<!-- Loading -->
+<div id="loading-screen" style="display:none">
+  <div class="spinner-wrap"><div class="spinner"></div></div>
+</div>
+
+<!-- Main — Mark Ordered (Purchaser) -->
+<div id="ordered-screen" style="display:none">
+  <div class="container">
+    <div class="page-title">Mark as Ordered</div>
+    <div class="page-sub">Record purchase details for this approved requisition.</div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-header-icon">📋</div><div class="card-header-title">Requisition Details</div></div>
+      <div class="card-body">
+        <div class="info-grid">
+          <div class="info-item"><label>Requisition ID</label><span id="ord-id" style="font-family:monospace;font-weight:700;color:var(--blue)"></span></div>
+          <div class="info-item"><label>Status</label><span id="ord-status"></span></div>
+          <div class="info-item"><label>Requested by</label><span id="ord-requestor"></span></div>
+          <div class="info-item"><label>Total estimate</label><span id="ord-total" style="font-weight:700"></span></div>
+          <div class="info-item" style="grid-column:1/-1"><label>Reason</label><span id="ord-reason"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-header-icon">🛒</div><div class="card-header-title">Items — Enter Actual Purchase Details</div></div>
+      <div class="card-body">
+        <table class="items-table">
+          <thead>
+            <tr>
+              <th>Description</th>
+              <th>Qty</th>
+              <th>Vendor</th>
+              <th>Actual Unit Price</th>
+            </tr>
+          </thead>
+          <tbody id="ord-items-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-header-icon">💳</div><div class="card-header-title">Payment</div></div>
+      <div class="card-body">
+        <div class="field">
+          <label>Payment method <span style="color:var(--red)">*</span></label>
+          <select id="payment-mode">
+            <option value="">— Select —</option>
+            <option value="Corporate Card">Corporate Card</option>
+            <option value="Cheque">Cheque</option>
+            <option value="EFT">EFT</option>
+            <option value="Petty Cash">Petty Cash</option>
+          </select>
+        </div>
+        <div class="action-buttons">
+          <button class="btn btn-success" id="btn-ordered" onclick="submitOrdered()">✓ Mark as Ordered</button>
+          <button class="btn btn-danger" onclick="submitRejectAtPurchase()">✗ Cannot Purchase</button>
+        </div>
+        <div class="error-msg" id="ord-error"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Main — Mark Received (Purchaser) -->
+<div id="received-screen" style="display:none">
+  <div class="container">
+    <div class="page-title">Mark as Received</div>
+    <div class="page-sub">Confirm that items have arrived at the reception desk.</div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-header-icon">📋</div><div class="card-header-title">Requisition Details</div></div>
+      <div class="card-body">
+        <div class="info-grid">
+          <div class="info-item"><label>Requisition ID</label><span id="rec-id" style="font-family:monospace;font-weight:700;color:var(--blue)"></span></div>
+          <div class="info-item"><label>Status</label><span id="rec-status"></span></div>
+          <div class="info-item"><label>Requested by</label><span id="rec-requestor"></span></div>
+          <div class="info-item"><label>Total estimate</label><span id="rec-total" style="font-weight:700"></span></div>
+          <div class="info-item" style="grid-column:1/-1"><label>Reason</label><span id="rec-reason"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-header-icon">🛒</div><div class="card-header-title">Items Ordered</div></div>
+      <div class="card-body">
+        <table class="items-table">
+          <thead>
+            <tr><th>Description</th><th>Qty</th><th>Vendor</th><th>Actual Price</th></tr>
+          </thead>
+          <tbody id="rec-items-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-header-icon">📦</div><div class="card-header-title">Confirm Receipt</div></div>
+      <div class="card-body">
+        <p style="font-size:14px;color:var(--text-mid);margin-bottom:16px">
+          Confirm that all items have arrived at the reception desk. The requestor will be notified to pick up their order.
+        </p>
+        <div class="action-buttons">
+          <button class="btn btn-success" id="btn-received" onclick="submitReceived()">📦 Mark Items Received</button>
+        </div>
+        <div class="error-msg" id="rec-error"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Main — Confirm Receipt (Requestor) -->
+<div id="confirm-screen" style="display:none">
+  <div class="container">
+    <div class="page-title">Confirm Receipt</div>
+    <div class="page-sub">Confirm that you have received your order.</div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-header-icon">📋</div><div class="card-header-title">Requisition Details</div></div>
+      <div class="card-body">
+        <div class="info-grid">
+          <div class="info-item"><label>Requisition ID</label><span id="con-id" style="font-family:monospace;font-weight:700;color:var(--blue)"></span></div>
+          <div class="info-item"><label>Status</label><span id="con-status"></span></div>
+          <div class="info-item"><label>Requested by</label><span id="con-requestor"></span></div>
+          <div class="info-item"><label>Total estimate</label><span id="con-total" style="font-weight:700"></span></div>
+          <div class="info-item" style="grid-column:1/-1"><label>Reason</label><span id="con-reason"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-header-icon">🛒</div><div class="card-header-title">Items</div></div>
+      <div class="card-body">
+        <table class="items-table">
+          <thead>
+            <tr><th>Description</th><th>Qty</th><th>Vendor</th><th>Actual Price</th></tr>
+          </thead>
+          <tbody id="con-items-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-header-icon">✓</div><div class="card-header-title">Confirm Receipt</div></div>
+      <div class="card-body">
+        <p style="font-size:14px;color:var(--text-mid);margin-bottom:16px">
+          Please confirm that you have picked up and received all items from the reception desk. This will close the requisition.
+        </p>
+        <div class="action-buttons">
+          <button class="btn btn-success" id="btn-confirm" onclick="submitConfirm()">✓ I Have Received My Order</button>
+        </div>
+        <div class="error-msg" id="con-error"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Done -->
+<div id="done-screen" style="display:none;flex-direction:column;align-items:center;justify-content:center;min-height:calc(100vh - 52px);padding:24px">
+  <div class="center-card">
+    <div class="done-icon success" id="done-icon">✓</div>
+    <h2 id="done-title">Done</h2>
+    <p id="done-msg" style="margin-top:8px"></p>
+    <button class="btn btn-primary" onclick="window.close()" style="margin-top:24px">Close</button>
+  </div>
+</div>
+
+<!-- Error -->
+<div id="error-screen" style="display:none;flex-direction:column;align-items:center;justify-content:center;min-height:calc(100vh - 52px);padding:24px">
+  <div class="center-card">
+    <h2 style="color:var(--red)">Unable to Load Requisition</h2>
+    <p id="error-msg" style="margin-top:8px"></p>
+    <button class="btn btn-primary" onclick="location.reload()" style="margin-top:24px">Try again</button>
+  </div>
+</div>
+
+<!-- Reject at Purchase Modal -->
+<div id="reject-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;align-items:center;justify-content:center;padding:24px">
+  <div style="background:white;border-radius:var(--radius);padding:32px;max-width:480px;width:100%">
+    <h3 style="margin-bottom:16px;color:var(--red)">Cannot Purchase — Reason Required</h3>
+    <div class="field">
+      <label>Reason <span style="color:var(--red)">*</span></label>
+      <textarea id="reject-reason" placeholder="Explain why this cannot be purchased…"></textarea>
+    </div>
+    <div style="display:flex;gap:12px;justify-content:flex-end">
+      <button class="btn btn-primary" style="background:white;color:var(--text);border:1px solid var(--border)" onclick="closeRejectModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="confirmRejectAtPurchase()">Confirm Rejection</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const CONFIG = {
+  clientId:    '6bfa3adb-1f7d-44e4-8cb9-38be4a107549',
+  tenantId:    '4c9a50a1-c27f-4044-8025-b59b5b804d16',
+  redirectUri: 'https://orange-bay-0e0de3210.7.azurestaticapps.net/requisition/fulfill/',
+  backendUrl:  'https://macrodyne-requisition-g7f9dxcxetg0hwcc.canadacentral-01.azurewebsites.net',
+};
+
+let msalInstance = null;
+let currentUser  = {};
+let fulfillData  = null;
+let reqId        = null;
+
+// ── MSAL ──────────────────────────────────────────────────────────────────────
+
+async function initMsal() {
+  msalInstance = new msal.PublicClientApplication({
+    auth: {
+      clientId:    CONFIG.clientId,
+      authority:   `https://login.microsoftonline.com/${CONFIG.tenantId}`,
+      redirectUri: CONFIG.redirectUri,
+    },
+    cache: { cacheLocation: 'sessionStorage' },
+  });
+  await msalInstance.initialize();
+  const response = await msalInstance.handleRedirectPromise();
+  if (response) msalInstance.setActiveAccount(response.account);
+
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length > 0) {
+    msalInstance.setActiveAccount(accounts[0]);
+    await onSignedIn();
+  } else {
+    showScreen('auth');
+  }
+}
+
+function signIn() {
+  msalInstance.loginRedirect({ scopes: ['https://graph.microsoft.com/User.Read'] });
+}
+
+async function onSignedIn() {
+  showScreen('loading');
+  const account    = msalInstance.getActiveAccount();
+  currentUser.upn  = account.username;
+  currentUser.name = account.name || account.username;
+
+  document.getElementById('user-name-header').textContent = currentUser.name;
+  const initials = currentUser.name.split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase();
+  document.getElementById('user-initials').textContent = initials;
+
+  const params = new URLSearchParams(window.location.search);
+  reqId = params.get('req');
+
+  if (!reqId) {
+    showError('No requisition ID provided. Please use the link from your notification email.');
+    return;
+  }
+
+  try {
+    const url = `${CONFIG.backendUrl}/api/fulfill?requisitionID=${encodeURIComponent(reqId)}&actorUPN=${encodeURIComponent(currentUser.upn)}`;
+    const r   = await fetch(url);
+    const data = await r.json();
+
+    if (!data.success) {
+      showError(data.error || 'Unable to load requisition.');
+      return;
+    }
+
+    fulfillData = data;
+    populateAndShow(data);
+
+  } catch(e) {
+    showError('Could not reach the requisition service. Please check your connection.');
+  }
+}
+
+function populateAndShow(data) {
+  const req     = data.requisition;
+  const items   = data.lineItems;
+  const actions = data.allowedActions;
+
+  const fmtAmount = (a, c) => `${c || 'CAD'} $${parseFloat(a).toLocaleString('en-CA', {minimumFractionDigits:2})}`;
+  const statusBadge = (s) => {
+    const map = {
+      'ApprovedPendingPurchase': ['badge-approved',  'Approved — Pending Purchase'],
+      'Ordered':                 ['badge-ordered',   'Ordered'],
+      'ReceivedByPurchaser':     ['badge-received',  'Received at Reception'],
+    };
+    const [cls, label] = map[s] || ['', s];
+    return `<span class="badge ${cls}">${label}</span>`;
+  };
+
+  if (actions.includes('MarkOrdered') || actions.includes('RejectAtPurchase')) {
+    // Purchaser — Mark Ordered view
+    document.getElementById('ord-id').textContent        = req.requisitionID;
+    document.getElementById('ord-status').innerHTML      = statusBadge(req.status);
+    document.getElementById('ord-requestor').textContent = req.requestorName;
+    document.getElementById('ord-total').textContent     = fmtAmount(req.totalAmount, req.currency);
+    document.getElementById('ord-reason').textContent    = req.reason;
+
+    const tbody = document.getElementById('ord-items-tbody');
+    tbody.innerHTML = items.map((item, i) => `
+      <tr>
+        <td>${escHtml(item.itemDescription)}</td>
+        <td style="text-align:right">${item.quantity}</td>
+        <td><input type="text" class="vendor-input" id="vendor-${i}" placeholder="Vendor name" value="${escHtml(item.vendorAtPurchase || '')}"></td>
+        <td><input type="number" id="price-${i}" value="${item.actualUnitPrice || item.unitPriceEstimate}" min="0" step="0.01" data-item-id="${item.id}"></td>
+      </tr>`).join('');
+
+    showScreen('ordered');
+
+  } else if (actions.includes('MarkReceived')) {
+    // Purchaser — Mark Received view
+    document.getElementById('rec-id').textContent        = req.requisitionID;
+    document.getElementById('rec-status').innerHTML      = statusBadge(req.status);
+    document.getElementById('rec-requestor').textContent = req.requestorName;
+    document.getElementById('rec-total').textContent     = fmtAmount(req.totalAmount, req.currency);
+    document.getElementById('rec-reason').textContent    = req.reason;
+
+    const tbody = document.getElementById('rec-items-tbody');
+    tbody.innerHTML = items.map(item => `
+      <tr>
+        <td>${escHtml(item.itemDescription)}</td>
+        <td style="text-align:right">${item.quantity}</td>
+        <td style="text-align:right">${escHtml(item.vendorAtPurchase || '—')}</td>
+        <td>${item.actualUnitPrice ? `$${parseFloat(item.actualUnitPrice).toLocaleString('en-CA', {minimumFractionDigits:2})}` : '—'}</td>
+      </tr>`).join('');
+
+    showScreen('received');
+
+  } else if (actions.includes('Confirm')) {
+    // Requestor — Confirm Receipt view
+    document.getElementById('con-id').textContent        = req.requisitionID;
+    document.getElementById('con-status').innerHTML      = statusBadge(req.status);
+    document.getElementById('con-requestor').textContent = req.requestorName;
+    document.getElementById('con-total').textContent     = fmtAmount(req.totalAmount, req.currency);
+    document.getElementById('con-reason').textContent    = req.reason;
+
+    const tbody = document.getElementById('con-items-tbody');
+    tbody.innerHTML = items.map(item => `
+      <tr>
+        <td>${escHtml(item.itemDescription)}</td>
+        <td style="text-align:right">${item.quantity}</td>
+        <td style="text-align:right">${escHtml(item.vendorAtPurchase || '—')}</td>
+        <td>${item.actualUnitPrice ? `$${parseFloat(item.actualUnitPrice).toLocaleString('en-CA', {minimumFractionDigits:2})}` : '—'}</td>
+      </tr>`).join('');
+
+    showScreen('confirm');
+  }
+}
+
+// ── Actions ───────────────────────────────────────────────────────────────────
+
+async function submitOrdered() {
+  const paymentMode = document.getElementById('payment-mode').value;
+  const errorEl     = document.getElementById('ord-error');
+
+  if (!paymentMode) {
+    errorEl.textContent = 'Please select a payment method.';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  errorEl.style.display = 'none';
+  const btn = document.getElementById('btn-ordered');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-inline"></span> Saving…';
+
+  const items   = fulfillData.lineItems;
+  const lineUpdates = items.map((item, i) => ({
+    id:               item.id,
+    vendorAtPurchase: document.getElementById(`vendor-${i}`)?.value.trim() || '',
+    actualUnitPrice:  parseFloat(document.getElementById(`price-${i}`)?.value) || 0,
+  }));
+
+  try {
+    const r = await fetch(`${CONFIG.backendUrl}/api/requisition`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action:        'MarkOrderedByUPN',
+        requisitionID: reqId,
+        actorUPN:      currentUser.upn,
+        paymentMode,
+        lineUpdates,
+      }),
+    });
+    const result = await r.json();
+    if (result.success) {
+      showDone('Marked as Ordered', `Requisition ${reqId} has been marked as ordered. The requestor has been notified and will be alerted when items arrive.`);
+    } else {
+      errorEl.textContent = result.error || 'An error occurred.';
+      errorEl.style.display = 'block';
+      btn.disabled = false;
+      btn.innerHTML = '✓ Mark as Ordered';
+    }
+  } catch(e) {
+    errorEl.textContent = 'Could not reach the service. Please try again.';
+    errorEl.style.display = 'block';
+    btn.disabled = false;
+    btn.innerHTML = '✓ Mark as Ordered';
+  }
+}
+
+function submitRejectAtPurchase() {
+  document.getElementById('reject-reason').value = '';
+  document.getElementById('reject-modal').style.display = 'flex';
+}
+
+function closeRejectModal() {
+  document.getElementById('reject-modal').style.display = 'none';
+}
+
+async function confirmRejectAtPurchase() {
+  const reason = document.getElementById('reject-reason').value.trim();
+  if (!reason) {
+    alert('Please provide a reason.');
+    return;
+  }
+  closeRejectModal();
+
+  try {
+    const r = await fetch(`${CONFIG.backendUrl}/api/requisition`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action:        'RejectAtPurchaseByUPN',
+        requisitionID: reqId,
+        actorUPN:      currentUser.upn,
+        comment:       reason,
+      }),
+    });
+    const result = await r.json();
+    if (result.success) {
+      showDone('Purchase Rejected', `Requisition ${reqId} has been flagged as unable to purchase. The requestor and AP have been notified.`);
+    }
+  } catch(e) {
+    alert('Could not reach the service. Please try again.');
+  }
+}
+
+async function submitReceived() {
+  const errorEl = document.getElementById('rec-error');
+  errorEl.style.display = 'none';
+  const btn = document.getElementById('btn-received');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-inline"></span> Saving…';
+
+  try {
+    const r = await fetch(`${CONFIG.backendUrl}/api/requisition`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action:        'MarkReceivedByUPN',
+        requisitionID: reqId,
+        actorUPN:      currentUser.upn,
+      }),
+    });
+    const result = await r.json();
+    if (result.success) {
+      showDone('Items Received', `Requisition ${reqId} has been marked as received. The requestor has been notified to pick up their order.`);
+    } else {
+      errorEl.textContent = result.error || 'An error occurred.';
+      errorEl.style.display = 'block';
+      btn.disabled = false;
+      btn.innerHTML = '📦 Mark Items Received';
+    }
+  } catch(e) {
+    errorEl.textContent = 'Could not reach the service. Please try again.';
+    errorEl.style.display = 'block';
+    btn.disabled = false;
+    btn.innerHTML = '📦 Mark Items Received';
+  }
+}
+
+async function submitConfirm() {
+  const errorEl = document.getElementById('con-error');
+  errorEl.style.display = 'none';
+  const btn = document.getElementById('btn-confirm');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-inline"></span> Confirming…';
+
+  try {
+    const r = await fetch(`${CONFIG.backendUrl}/api/requisition`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action:        'ConfirmByUPN',
+        requisitionID: reqId,
+        actorUPN:      currentUser.upn,
+      }),
+    });
+    const result = await r.json();
+    if (result.success) {
+      showDone('Receipt Confirmed', `Requisition ${reqId} is now closed. Thank you for confirming receipt.`);
+    } else {
+      errorEl.textContent = result.error || 'An error occurred.';
+      errorEl.style.display = 'block';
+      btn.disabled = false;
+      btn.innerHTML = '✓ I Have Received My Order';
+    }
+  } catch(e) {
+    errorEl.textContent = 'Could not reach the service. Please try again.';
+    errorEl.style.display = 'block';
+    btn.disabled = false;
+    btn.innerHTML = '✓ I Have Received My Order';
+  }
+}
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
+
+function showScreen(name) {
+  ['auth','loading','ordered','received','confirm','done','error'].forEach(s => {
+    const el = document.getElementById(`${s}-screen`);
+    if (el) el.style.display = 'none';
+  });
+  const target = document.getElementById(`${name}-screen`);
+  if (!target) return;
+  if (['auth','done','error'].includes(name)) {
+    target.style.display = 'flex';
+  } else {
+    target.style.display = 'block';
+  }
+}
+
+function showDone(title, msg) {
+  document.getElementById('done-title').textContent = title;
+  document.getElementById('done-msg').textContent   = msg;
+  showScreen('done');
+}
+
+function showError(msg) {
+  document.getElementById('error-msg').textContent = msg;
+  showScreen('error');
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+initMsal().catch(() => showScreen('auth'));
+</script>
+</body>
+</html>
