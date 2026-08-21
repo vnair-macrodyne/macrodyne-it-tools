@@ -37,6 +37,8 @@ jobs:
             --exclude "__pycache__/*" \
             --exclude "local.settings.json"
           popd
+      - name: Verify zip contents
+        run: unzip -l app.zip | grep app.py
       - name: Login to Azure
         uses: azure/login@v2
         with:
