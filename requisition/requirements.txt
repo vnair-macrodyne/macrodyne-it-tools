@@ -2,4 +2,3 @@ flask
 gunicorn
 msal
 requests
-PyJWT
