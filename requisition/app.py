@@ -214,6 +214,7 @@ def _handle_mark_ordered(actor, payload):
     return workflow.mark_ordered(
         payload.get("requisitionID", ""), actor,
         payment_mode = payload.get("paymentMode", ""),
+        comment      = payload.get("comment", ""),
         line_updates = payload.get("lineUpdates", []),
     )
 

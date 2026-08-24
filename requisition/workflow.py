@@ -392,9 +392,10 @@ def _detail(requisition):
         "requestorEmpNo":   requisition.get("RequestorEmpNo", ""),
         "managerUPN":       requisition.get("ManagerUPN", ""),
         "paymentMode":      requisition.get("PaymentMode", ""),
-        "managerComment":   requisition.get("ManagerComment", ""),
-        "apComment":        requisition.get("APComment", ""),
-        "rejectionReason":  requisition.get("RejectionReason", ""),
+        "managerComment":     requisition.get("ManagerComment", ""),
+        "apComment":          requisition.get("APComment", ""),
+        "fulfillmentComment": requisition.get("FulfillmentComment", ""),
+        "rejectionReason":    requisition.get("RejectionReason", ""),
         "orderedUtc":       requisition.get("OrderedUtc", ""),
         "receivedUtc":      requisition.get("ReceivedUtc", ""),
         "closedUtc":        requisition.get("ClosedUtc", ""),
@@ -876,20 +877,34 @@ def cancel(requisition_id, actor, comment=""):
     return {"status": "ok"}
 
 
-def mark_ordered(requisition_id, actor, payment_mode, line_updates=None):
-    """Record that fulfillment has placed the order."""
+def mark_ordered(requisition_id, actor, payment_mode, comment="",
+                 line_updates=None):
+    """Record how fulfillment satisfied a requisition.
+
+    Covers both buying the item and issuing one already held in stock. The
+    comment is where that distinction is recorded, along with anything else
+    worth knowing — a substituted model, a delayed delivery, a partial fill.
+    Actual unit price of zero is what marks a stock issue in the spend report.
+    """
     if not payment_mode:
         raise WorkflowError("A payment method is required.")
+    if not comment or not comment.strip():
+        raise WorkflowError(
+            "Add a note saying what was done — ordered, issued from stock, "
+            "or substituted."
+        )
 
     requisition = _load_for_action(requisition_id, actor, "MarkOrdered")
     sp_id       = requisition["ID"]
     now         = dao.utc_now_iso()
+    note        = comment.strip()
 
     dao.update_requisition(sp_id, {
-        "Status":         config.STATUS_ORDERED,
-        "OrderedUtc":     now,
-        "OrderedByEmpNo": actor["emp_no"],
-        "PaymentMode":    payment_mode,
+        "Status":              config.STATUS_ORDERED,
+        "OrderedUtc":          now,
+        "OrderedByEmpNo":      actor["emp_no"],
+        "PaymentMode":         payment_mode,
+        "FulfillmentComment":  note,
     })
 
     # Actual vendor and price are captured per line at purchase time.
@@ -900,10 +915,10 @@ def mark_ordered(requisition_id, actor, payment_mode, line_updates=None):
         })
 
     _record_history(sp_id, requisition_id, config.STATUS_APPROVED_PENDING,
-                    config.STATUS_ORDERED, f"Ordered via {payment_mode}")
+                    config.STATUS_ORDERED, note)
 
     notifications.send_ordered(
-        requisition_id, payment_mode, now,
+        requisition_id, payment_mode, now, note,
         requisition.get("RequestorUPN", ""),
         _copy_list(requisition.get("ManagerUPN")),
     )

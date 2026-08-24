@@ -1,1017 +1,1122 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Macrodyne — Purchase Requisition</title>
-  <script src="https://alcdn.msauth.net/browser/2.38.0/js/msal-browser.min.js"></script>
-  <style>
-    :root {
-      --blue:       #0063B1;
-      --blue-dark:  #004F8F;
-      --blue-light: #EBF3FB;
-      --blue-mid:   #C7DEF5;
-      --green:      #107C10;
-      --red:        #A4262C;
-      --amber:      #C19B00;
-      --text:       #1B1B1B;
-      --text-mid:   #4A4A4A;
-      --text-light: #767676;
-      --border:     #D0D0D0;
-      --bg:         #F4F6F9;
-      --white:      #FFFFFF;
-      --radius:     6px;
-      --shadow:     0 2px 8px rgba(0,0,0,.10);
-      --shadow-lg:  0 4px 20px rgba(0,0,0,.14);
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Requisitions — Macrodyne Technologies</title>
+<script src="https://alcdn.msauth.net/browser/2.38.0/js/msal-browser.min.js"></script>
+<style>
+/* ── Tokens ──────────────────────────────────────────────────────────────
+   Industrial palette: press-shop blue, steel greys, a single amber for
+   anything waiting on a person. Restrained on purpose — this is a tool
+   people use between other tasks, not somewhere they linger.            */
+:root {
+  --ink:        #16191D;
+  --ink-2:      #454C54;
+  --ink-3:      #6B747E;
+  --line:       #DCE0E5;
+  --line-2:     #EDF0F3;
+  --paper:      #FFFFFF;
+  --wash:       #F5F7F9;
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+  --blue:       #005A9E;
+  --blue-deep:  #003D6B;
+  --blue-wash:  #E8F1F8;
 
-    body {
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-    }
+  --amber:      #8A6100;
+  --amber-wash: #FDF4E0;
+  --green:      #12633B;
+  --green-wash: #E6F4EC;
+  --red:        #A31621;
+  --red-wash:   #FBEAEC;
 
-    /* ── Header ── */
-    .header {
-      background: var(--blue);
-      padding: 0 24px;
-      display: flex;
-      align-items: center;
-      height: 52px;
-      gap: 16px;
-    }
-    .header-logo {
-      color: white;
-      font-size: 15px;
-      font-weight: 700;
-      letter-spacing: .02em;
-    }
-    .header-sep { width: 1px; height: 24px; background: rgba(255,255,255,.3); }
-    .header-title { color: rgba(255,255,255,.85); font-size: 13px; }
-    .header-user {
-      margin-left: auto;
-      color: rgba(255,255,255,.85);
-      font-size: 12px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .header-avatar {
-      width: 28px; height: 28px;
-      border-radius: 50%;
-      background: rgba(255,255,255,.2);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 12px; font-weight: 600; color: white;
-    }
+  --r:    4px;
+  --gap:  20px;
+  --shadow:    0 1px 2px rgba(22,25,29,.06), 0 1px 3px rgba(22,25,29,.04);
+  --shadow-lg: 0 4px 16px rgba(22,25,29,.10);
+}
 
-    /* ── Auth screen ── */
-    #auth-screen {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: calc(100vh - 52px);
-      padding: 24px;
-    }
-    .auth-card {
-      background: var(--white);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow-lg);
-      padding: 40px;
-      max-width: 400px;
-      width: 100%;
-      text-align: center;
-    }
-    .auth-card h2 { font-size: 20px; margin-bottom: 8px; color: var(--blue); }
-    .auth-card p { color: var(--text-mid); font-size: 14px; margin-bottom: 24px; line-height: 1.5; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
-    /* ── Main layout ── */
-    #main-screen { display: none; }
-    .container { max-width: 760px; margin: 0 auto; padding: 24px 16px 80px; }
+body {
+  font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--wash);
+  -webkit-font-smoothing: antialiased;
+}
 
-    /* ── Page title ── */
-    .page-title {
-      font-size: 22px;
-      font-weight: 600;
-      color: var(--blue-dark);
-      margin-bottom: 4px;
-    }
-    .page-sub {
-      font-size: 13px;
-      color: var(--text-light);
-      margin-bottom: 24px;
-    }
+/* Tabular figures everywhere money or IDs appear — columns should line up. */
+.num, .req-id, td.amount, .amount {
+  font-variant-numeric: tabular-nums;
+}
 
-    /* ── Card ── */
-    .card {
-      background: var(--white);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      margin-bottom: 16px;
-      overflow: hidden;
-    }
-    .card-header {
-      background: var(--blue-light);
-      border-bottom: 1px solid var(--blue-mid);
-      padding: 12px 20px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .card-header-icon {
-      width: 20px; height: 20px;
-      background: var(--blue);
-      border-radius: 3px;
-      display: flex; align-items: center; justify-content: center;
-      color: white; font-size: 11px;
-    }
-    .card-header-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--blue-dark);
-    }
-    .card-body { padding: 20px; }
+/* ── Masthead ──────────────────────────────────────────────────────────── */
+.masthead {
+  background: var(--blue-deep);
+  color: #fff;
+  padding: 0 24px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.masthead h1 {
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: .02em;
+}
+.masthead .rule { width: 1px; height: 20px; background: rgba(255,255,255,.25); }
+.masthead .context { font-size: 13px; color: rgba(255,255,255,.72); }
+.masthead .who {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 10px;
+  font-size: 13px; color: rgba(255,255,255,.86);
+}
+.chip {
+  font-size: 10px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: 2px 7px; border-radius: 2px;
+  background: rgba(255,255,255,.16);
+}
 
-    /* ── Requestor info ── */
-    .info-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-    .info-item label {
-      display: block;
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-light);
-      text-transform: uppercase;
-      letter-spacing: .05em;
-      margin-bottom: 4px;
-    }
-    .info-item span {
-      font-size: 14px;
-      color: var(--text);
-    }
+/* ── Shell ─────────────────────────────────────────────────────────────── */
+.shell { max-width: 940px; margin: 0 auto; padding: 24px 20px 72px; }
 
-    /* ── Form fields ── */
-    .field { margin-bottom: 16px; }
-    .field label {
-      display: block;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text);
-      margin-bottom: 6px;
-    }
-    .field label .req { color: var(--red); margin-left: 2px; }
-    .field input,
-    .field textarea,
-    .field select {
-      width: 100%;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 8px 12px;
-      font-size: 14px;
-      font-family: inherit;
-      color: var(--text);
-      background: var(--white);
-      transition: border-color .15s;
-      outline: none;
-    }
-    .field input:focus,
-    .field textarea:focus,
-    .field select:focus {
-      border-color: var(--blue);
-      box-shadow: 0 0 0 2px rgba(0,99,177,.15);
-    }
-    .field textarea { resize: vertical; min-height: 80px; }
+.section-head {
+  display: flex; align-items: baseline; gap: 10px;
+  margin: 32px 0 12px;
+}
+.section-head:first-of-type { margin-top: 0; }
+.section-head h2 {
+  font-size: 12px; font-weight: 700;
+  letter-spacing: .09em; text-transform: uppercase;
+  color: var(--ink-3);
+}
+.section-head .count {
+  font-size: 12px; color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
 
-    /* ── Currency toggle ── */
-    .currency-toggle {
-      display: flex;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      overflow: hidden;
-      width: fit-content;
-    }
-    .currency-toggle button {
-      padding: 8px 20px;
-      font-size: 13px;
-      font-weight: 600;
-      border: none;
-      background: var(--white);
-      color: var(--text-mid);
-      cursor: pointer;
-      transition: all .15s;
-    }
-    .currency-toggle button.active {
-      background: var(--blue);
-      color: white;
-    }
+.panel {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+}
+.panel-body { padding: var(--gap); }
 
-    /* ── Line items ── */
-    .line-items-header {
-      display: grid;
-      grid-template-columns: 1fr 180px 90px 90px 36px;
-      gap: 8px;
-      padding: 0 0 8px;
-      border-bottom: 1px solid var(--border);
-      margin-bottom: 8px;
-    }
-    .line-items-header span {
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-light);
-      text-transform: uppercase;
-      letter-spacing: .05em;
-    }
-    .line-item {
-      display: grid;
-      grid-template-columns: 1fr 180px 90px 90px 36px;
-      gap: 8px;
-      margin-bottom: 8px;
-      align-items: start;
-    }
-    .line-item input,
-    .line-item select {
-      width: 100%;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 7px 10px;
-      font-size: 13px;
-      font-family: inherit;
-      color: var(--text);
-      background: var(--white);
-      outline: none;
-    }
-    .line-item input:focus,
-    .line-item select:focus {
-      border-color: var(--blue);
-      box-shadow: 0 0 0 2px rgba(0,99,177,.15);
-    }
-    .line-item .line-total {
-      padding: 7px 10px;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text);
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      text-align: right;
-    }
-    .btn-remove {
-      width: 32px; height: 32px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      background: var(--white);
-      color: var(--text-light);
-      cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 16px;
-      transition: all .15s;
-      margin-top: 1px;
-    }
-    .btn-remove:hover { background: #FDE7E9; border-color: var(--red); color: var(--red); }
+/* ── Banner ────────────────────────────────────────────────────────────── */
+.banner {
+  display: none;
+  align-items: flex-start; gap: 10px;
+  padding: 12px 16px;
+  border-radius: var(--r);
+  border-left: 3px solid;
+  margin-bottom: 20px;
+  font-size: 13px;
+}
+.banner.show { display: flex; }
+.banner.good { background: var(--green-wash); border-color: var(--green); color: var(--green); }
+.banner.bad  { background: var(--red-wash);   border-color: var(--red);   color: var(--red); }
+.banner strong { font-weight: 650; }
+.banner .close {
+  margin-left: auto; cursor: pointer; opacity: .5;
+  background: none; border: none; font-size: 16px; color: inherit;
+  line-height: 1; padding: 0 2px;
+}
+.banner .close:hover { opacity: 1; }
 
-    /* ── Add line button ── */
-    .btn-add-line {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 8px 14px;
-      border: 1px dashed var(--border);
-      border-radius: var(--radius);
-      background: transparent;
-      color: var(--blue);
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all .15s;
-      margin-top: 8px;
-    }
-    .btn-add-line:hover {
-      border-color: var(--blue);
-      background: var(--blue-light);
-    }
+/* ── Form ──────────────────────────────────────────────────────────────── */
+.field { margin-bottom: 16px; }
+.field label {
+  display: block; font-size: 12px; font-weight: 650;
+  color: var(--ink-2); margin-bottom: 5px;
+}
+.field .req-mark { color: var(--red); }
 
-    /* ── Total bar ── */
-    .total-bar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 16px;
-      border-radius: var(--radius);
-      margin-top: 12px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      transition: all .2s;
-    }
-    .total-bar.warn {
-      background: #FFF9E6;
-      border-color: var(--amber);
-    }
-    .total-bar.over {
-      background: #FDE7E9;
-      border-color: var(--red);
-    }
-    .total-label { font-size: 13px; color: var(--text-mid); }
-    .total-amount {
-      font-size: 18px;
-      font-weight: 700;
-      color: var(--text);
-    }
-    .total-bar.warn .total-amount { color: var(--amber); }
-    .total-bar.over .total-amount { color: var(--red); }
-    .cap-msg {
-      font-size: 12px;
-      margin-top: 6px;
-      display: none;
-    }
-    .cap-msg.show { display: block; }
-    .cap-msg.warn { color: var(--amber); }
-    .cap-msg.over { color: var(--red); }
+input[type=text], input[type=number], textarea, select {
+  width: 100%;
+  font-family: inherit; font-size: 14px; color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 7px 10px;
+  outline: none;
+  transition: border-color .12s, box-shadow .12s;
+}
+input:focus, textarea:focus, select:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(0,90,158,.12);
+}
+textarea { resize: vertical; min-height: 62px; }
 
-    /* ── Buttons ── */
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 20px;
-      border-radius: var(--radius);
-      font-size: 14px;
-      font-weight: 600;
-      font-family: inherit;
-      cursor: pointer;
-      border: none;
-      transition: all .15s;
-    }
-    .btn-primary {
-      background: var(--blue);
-      color: white;
-    }
-    .btn-primary:hover { background: var(--blue-dark); }
-    .btn-primary:disabled {
-      background: var(--border);
-      color: var(--text-light);
-      cursor: not-allowed;
-    }
-    .btn-secondary {
-      background: var(--white);
-      color: var(--text);
-      border: 1px solid var(--border);
-    }
-    .btn-secondary:hover { background: var(--bg); }
+.toggle { display: inline-flex; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.toggle button {
+  font-family: inherit; font-size: 13px; font-weight: 600;
+  padding: 7px 18px; border: none; cursor: pointer;
+  background: var(--paper); color: var(--ink-2);
+}
+.toggle button[aria-pressed=true] { background: var(--blue); color: #fff; }
 
-    .form-actions {
-      display: flex;
-      gap: 12px;
-      justify-content: flex-end;
-      margin-top: 8px;
-    }
+/* Line items */
+.lines-head, .line {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr 72px 104px 30px;
+  gap: 8px;
+}
+.lines-head {
+  padding-bottom: 6px; margin-bottom: 8px;
+  border-bottom: 1px solid var(--line-2);
+}
+.lines-head span {
+  font-size: 10px; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+.line { margin-bottom: 8px; align-items: start; }
+.line input, .line select { font-size: 13px; padding: 6px 8px; }
+.icon-btn {
+  width: 30px; height: 32px;
+  border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--paper); color: var(--ink-3);
+  cursor: pointer; font-size: 15px; line-height: 1;
+}
+.icon-btn:hover { background: var(--red-wash); border-color: var(--red); color: var(--red); }
 
-    /* ── Success screen ── */
-    #success-screen {
-      display: none;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: calc(100vh - 52px);
-      padding: 24px;
-    }
-    .success-card {
-      background: var(--white);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow-lg);
-      padding: 40px;
-      max-width: 480px;
-      width: 100%;
-      text-align: center;
-    }
-    .success-icon {
-      width: 56px; height: 56px;
-      background: #DFF6DD;
-      border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 28px;
-      margin: 0 auto 20px;
-    }
-    .success-id {
-      font-size: 22px;
-      font-weight: 700;
-      color: var(--blue);
-      margin: 12px 0 8px;
-      font-family: 'Courier New', monospace;
-    }
-    .success-msg { font-size: 14px; color: var(--text-mid); line-height: 1.6; }
+.add-line {
+  font-family: inherit; font-size: 13px; font-weight: 600;
+  color: var(--blue); background: none;
+  border: 1px dashed var(--line); border-radius: var(--r);
+  padding: 7px 14px; cursor: pointer; margin-top: 4px;
+}
+.add-line:hover { border-color: var(--blue); background: var(--blue-wash); }
 
-    /* ── Error banner ── */
-    .error-banner {
-      background: #FDE7E9;
-      border: 1px solid #C50F1F;
-      border-radius: var(--radius);
-      padding: 12px 16px;
-      font-size: 13px;
-      color: #C50F1F;
-      margin-bottom: 16px;
-      display: none;
-    }
-    .error-banner.show { display: block; }
+/* Running total */
+.total-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 16px; padding: 12px 16px;
+  background: var(--wash); border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+.total-row.warn { background: var(--amber-wash); border-color: var(--amber); }
+.total-row.over { background: var(--red-wash);   border-color: var(--red); }
+.total-row .label { font-size: 12px; font-weight: 650; color: var(--ink-2); }
+.total-row .value { font-size: 19px; font-weight: 700; }
+.total-row.warn .value { color: var(--amber); }
+.total-row.over .value { color: var(--red); }
+.cap-note { font-size: 12px; margin-top: 6px; display: none; }
+.cap-note.show { display: block; }
+.cap-note.warn { color: var(--amber); }
+.cap-note.over { color: var(--red); }
 
-    /* ── Loading spinner ── */
-    .spinner {
-      width: 18px; height: 18px;
-      border: 2px solid rgba(255,255,255,.4);
-      border-top-color: white;
-      border-radius: 50%;
-      animation: spin .6s linear infinite;
-      display: inline-block;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
+/* ── Buttons ───────────────────────────────────────────────────────────── */
+.btn {
+  font-family: inherit; font-size: 13px; font-weight: 650;
+  padding: 8px 18px; border-radius: var(--r);
+  border: 1px solid transparent; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 7px;
+  transition: background .12s, border-color .12s;
+}
+.btn-primary { background: var(--blue); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--blue-deep); }
+.btn-primary:disabled { background: var(--line); color: var(--ink-3); cursor: not-allowed; }
+.btn-quiet { background: var(--paper); color: var(--ink); border-color: var(--line); }
+.btn-quiet:hover { background: var(--wash); }
+.btn-go   { background: var(--green); color: #fff; }
+.btn-go:hover { background: #0E4E2E; }
+.btn-stop { background: var(--paper); color: var(--red); border-color: var(--red); }
+.btn-stop:hover { background: var(--red-wash); }
+.actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }
 
-    /* ── Responsive ── */
-    @media (max-width: 600px) {
-      .info-grid { grid-template-columns: 1fr; }
-      .line-items-header { display: none; }
-      .line-item {
-        grid-template-columns: 1fr 1fr;
-        grid-template-rows: auto auto auto;
-      }
-      .line-item select { grid-column: 1 / -1; }
-    }
-  </style>
+/* ── Status pill ───────────────────────────────────────────────────────── */
+.pill {
+  display: inline-block;
+  font-size: 11px; font-weight: 650; letter-spacing: .02em;
+  padding: 2px 8px; border-radius: 10px; white-space: nowrap;
+}
+.pill.waiting { background: var(--amber-wash); color: var(--amber); }
+.pill.moving  { background: var(--blue-wash);  color: var(--blue); }
+.pill.done    { background: var(--green-wash); color: var(--green); }
+.pill.stopped { background: var(--red-wash);   color: var(--red); }
+
+/* ── Requisition rows ──────────────────────────────────────────────────── */
+.rows { display: flex; flex-direction: column; gap: 8px; }
+.row-card {
+  display: grid;
+  grid-template-columns: 116px 1fr auto auto;
+  gap: 14px; align-items: center;
+  padding: 12px 16px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+  border-radius: var(--r);
+  cursor: pointer;
+  transition: border-color .12s, box-shadow .12s;
+  text-align: left; width: 100%; font: inherit;
+}
+.row-card:hover { border-color: var(--blue); box-shadow: var(--shadow); }
+.row-card.needs-you { border-left-color: var(--amber); background: #FFFDF8; }
+.row-card .req-id { font-size: 13px; font-weight: 650; }
+.row-card .why {
+  font-size: 13px; color: var(--ink-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.row-card .who-for { font-size: 12px; color: var(--ink-3); }
+.row-card .amount { font-size: 14px; font-weight: 650; text-align: right; }
+
+/* ── History table ─────────────────────────────────────────────────────── */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
+  text-align: left; font-size: 10px; font-weight: 700;
+  letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3);
+  padding: 8px 12px; border-bottom: 1px solid var(--line);
+}
+td { padding: 10px 12px; border-bottom: 1px solid var(--line-2); }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--wash); }
+td.amount { text-align: right; font-weight: 650; }
+.link-btn {
+  font-family: inherit; font-size: 12px; font-weight: 650;
+  color: var(--blue); background: none; border: none;
+  cursor: pointer; padding: 2px 0;
+}
+.link-btn:hover { text-decoration: underline; }
+
+/* ── Empty and loading ─────────────────────────────────────────────────── */
+.empty {
+  padding: 28px 20px; text-align: center;
+  color: var(--ink-3); font-size: 13px;
+  background: var(--paper); border: 1px dashed var(--line);
+  border-radius: var(--r);
+}
+.centred {
+  min-height: calc(100vh - 52px);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.card-sm {
+  background: var(--paper); border: 1px solid var(--line);
+  border-radius: var(--r); box-shadow: var(--shadow-lg);
+  padding: 32px; max-width: 380px; width: 100%; text-align: center;
+}
+.card-sm h2 { font-size: 17px; margin-bottom: 8px; }
+.card-sm p { font-size: 13px; color: var(--ink-2); margin-bottom: 20px; }
+
+.spinner {
+  width: 15px; height: 15px;
+  border: 2px solid rgba(255,255,255,.35); border-top-color: #fff;
+  border-radius: 50%; animation: spin .6s linear infinite; display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Detail screen ─────────────────────────────────────────────────────── */
+.back {
+  font-family: inherit; font-size: 13px; font-weight: 600;
+  color: var(--blue); background: none; border: none;
+  cursor: pointer; padding: 0; margin-bottom: 16px;
+}
+.back:hover { text-decoration: underline; }
+
+.detail-top {
+  display: flex; align-items: flex-start; gap: 14px;
+  padding-bottom: 16px; margin-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.detail-top h2 { font-size: 20px; font-weight: 700; }
+.detail-top .amount { margin-left: auto; font-size: 22px; font-weight: 700; }
+
+.facts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px; margin-bottom: 20px;
+}
+.fact dt {
+  font-size: 10px; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--ink-3); margin-bottom: 3px;
+}
+.fact dd { font-size: 13px; }
+
+.trail { list-style: none; font-size: 13px; }
+.trail li {
+  padding: 8px 0 8px 16px; position: relative;
+  border-left: 2px solid var(--line-2);
+}
+.trail li::before {
+  content: ""; position: absolute; left: -5px; top: 14px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--line); border: 2px solid var(--paper);
+}
+.trail li:last-child::before { background: var(--blue); }
+.trail .when { font-size: 11px; color: var(--ink-3); }
+.trail .note { color: var(--ink-2); }
+
+.action-bar {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  padding-top: 16px; margin-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+/* ── Dialog ────────────────────────────────────────────────────────────
+   Used where an action needs more than a single line of input. Native
+   prompt() handles one field; anything richer needs this.            */
+dialog {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-lg);
+  padding: 0;
+  max-width: 440px; width: 92%;
+  color: var(--ink);
+}
+dialog::backdrop { background: rgba(22,25,29,.45); }
+dialog .head {
+  padding: 16px 20px 0;
+}
+dialog .head h3 { font-size: 15px; font-weight: 650; }
+dialog .head p { font-size: 13px; color: var(--ink-2); margin-top: 4px; }
+dialog .body { padding: 16px 20px; }
+dialog .foot {
+  display: flex; gap: 10px; justify-content: flex-end;
+  padding: 0 20px 20px;
+}
+
+@media (max-width: 680px) {
+  .lines-head { display: none; }
+  .line { grid-template-columns: 1fr 1fr; }
+  .line select, .line input:nth-child(2) { grid-column: 1 / -1; }
+  .row-card { grid-template-columns: 1fr auto; row-gap: 6px; }
+  .row-card .why { grid-column: 1 / -1; white-space: normal; }
+}
+</style>
 </head>
 <body>
 
-<!-- Header -->
-<div class="header">
-  <div class="header-logo">Macrodyne Technologies</div>
-  <div class="header-sep"></div>
-  <div class="header-title">Purchase Requisition</div>
-  <div class="header-user">
-    <div class="header-avatar" id="user-initials">–</div>
-    <span id="user-name-header"></span>
+<div class="masthead">
+  <h1>Macrodyne Technologies</h1>
+  <div class="rule"></div>
+  <div class="context">Requisitions</div>
+  <div class="who">
+    <span id="who-name"></span>
+    <span class="chip" id="who-role" hidden></span>
   </div>
 </div>
 
-<!-- Auth screen -->
-<div id="auth-screen">
-  <div class="auth-card">
-    <h2>Sign in required</h2>
-    <p>Please sign in with your Macrodyne Microsoft account to submit a purchase requisition.</p>
-    <button class="btn btn-primary" onclick="signIn()" style="width:100%;justify-content:center">
+<!-- Sign in ------------------------------------------------------------- -->
+<div class="centred" id="screen-signin" hidden>
+  <div class="card-sm">
+    <h2>Sign in to continue</h2>
+    <p>Requisitions are tied to your Macrodyne account so approvals reach the right people.</p>
+    <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="signIn()">
       Sign in with Microsoft
     </button>
   </div>
 </div>
 
-<!-- Main form -->
-<div id="main-screen">
-  <div class="container">
-    <div class="page-title">New Purchase Requisition</div>
-    <div class="page-sub">For purchases up to CAD/USD $5,000. Larger purchases require a formal PO.</div>
+<!-- Loading ------------------------------------------------------------- -->
+<div class="centred" id="screen-loading">
+  <div style="color:var(--ink-3);font-size:13px">Loading…</div>
+</div>
 
-    <div class="error-banner" id="error-banner"></div>
+<!-- Portal -------------------------------------------------------------- -->
+<div class="shell" id="screen-portal" hidden>
 
-    <!-- Requestor info -->
-    <div class="card">
-      <div class="card-header">
-        <div class="card-header-icon">👤</div>
-        <div class="card-header-title">Requestor Information</div>
+  <div class="banner" id="banner">
+    <div id="banner-text"></div>
+    <button class="close" onclick="hideBanner()" aria-label="Dismiss">&times;</button>
+  </div>
+
+  <div class="section-head"><h2>New request</h2></div>
+  <div class="panel">
+    <div class="panel-body">
+      <div class="field">
+        <label for="reason">What is this for? <span class="req-mark">*</span></label>
+        <textarea id="reason" placeholder="Who needs it and why — one or two lines is plenty."></textarea>
       </div>
-      <div class="card-body">
-        <div class="info-grid">
-          <div class="info-item">
-            <label>Name</label>
-            <span id="info-name">—</span>
-          </div>
-          <div class="info-item">
-            <label>Department</label>
-            <span id="info-dept">—</span>
-          </div>
-          <div class="info-item">
-            <label>Email</label>
-            <span id="info-email">—</span>
-          </div>
-          <div class="info-item">
-            <label>Approving Manager</label>
-            <span id="info-manager">—</span>
-          </div>
+
+      <div class="field">
+        <label>Currency</label>
+        <div class="toggle" role="group">
+          <button type="button" id="cur-CAD" aria-pressed="true"  onclick="setCurrency('CAD')">CAD</button>
+          <button type="button" id="cur-USD" aria-pressed="false" onclick="setCurrency('USD')">USD</button>
         </div>
       </div>
-    </div>
 
-    <!-- Reason -->
-    <div class="card">
-      <div class="card-header">
-        <div class="card-header-icon">📋</div>
-        <div class="card-header-title">Request Details</div>
+      <div class="lines-head">
+        <span>Item</span><span>Description</span><span>Qty</span><span>Unit price</span><span></span>
       </div>
-      <div class="card-body">
-        <div class="field">
-          <label>Reason for purchase <span class="req">*</span></label>
-          <textarea id="reason" placeholder="Briefly explain why this purchase is needed…" rows="3"></textarea>
-        </div>
-        <div class="field">
-          <label>Currency <span class="req">*</span></label>
-          <div class="currency-toggle">
-            <button id="btn-cad" class="active" onclick="setCurrency('CAD')">CAD</button>
-            <button id="btn-usd" onclick="setCurrency('USD')">USD</button>
-          </div>
-        </div>
-      </div>
-    </div>
+      <div id="lines"></div>
+      <button class="add-line" onclick="addLine()">Add another item</button>
 
-    <!-- Line items -->
-    <div class="card">
-      <div class="card-header">
-        <div class="card-header-icon">🛒</div>
-        <div class="card-header-title">Items to Purchase</div>
+      <div class="total-row" id="total-row">
+        <span class="label">Estimated total</span>
+        <span class="value amount" id="total">$0.00</span>
       </div>
-      <div class="card-body">
-        <div class="line-items-header">
-          <span>Item</span>
-          <span>Description / Model</span>
-          <span>Qty</span>
-          <span>Unit Price</span>
-          <span></span>
-        </div>
-        <div id="line-items-container"></div>
-        <button class="btn-add-line" onclick="addLine()">
-          + Add item
-        </button>
+      <div class="cap-note" id="cap-note"></div>
 
-        <div class="total-bar" id="total-bar">
-          <div>
-            <div class="total-label">Estimated Total</div>
-          </div>
-          <div class="total-amount" id="total-display">$0.00</div>
-        </div>
-        <div class="cap-msg" id="cap-msg"></div>
+      <p style="font-size:12px;color:var(--ink-3);margin-top:14px">
+        Orders are delivered to the reception desk. You will be told when yours arrives.
+      </p>
+
+      <div class="actions">
+        <button class="btn btn-quiet"   onclick="resetForm()">Clear</button>
+        <button class="btn btn-primary" id="submit-btn" onclick="submitRequest()">Send for approval</button>
       </div>
     </div>
+  </div>
 
-    <!-- All orders delivered note -->
-    <div style="font-size:12px;color:var(--text-light);margin-bottom:16px;padding:0 4px">
-      ℹ All items are ordered and delivered to the reception desk. You will be notified when your order arrives.
-    </div>
+  <div class="section-head" id="queue-head" hidden>
+    <h2>Waiting on you</h2><span class="count" id="queue-count"></span>
+  </div>
+  <div class="rows" id="queue" hidden></div>
 
-    <!-- Actions -->
-    <div class="form-actions">
-      <button class="btn btn-secondary" onclick="resetForm()">Clear form</button>
-      <button class="btn btn-primary" id="submit-btn" onclick="submitRequisition()">
-        Submit for approval
-      </button>
-    </div>
+  <div class="section-head"><h2>Your open requests</h2><span class="count" id="active-count"></span></div>
+  <div class="rows" id="active"></div>
+
+  <div class="section-head" id="history-head" hidden>
+    <h2>Finished</h2><span class="count" id="history-count"></span>
+  </div>
+  <div class="panel" id="history-panel" hidden>
+    <table>
+      <thead><tr><th>Request</th><th>What for</th><th>Outcome</th><th style="text-align:right">Amount</th><th></th></tr></thead>
+      <tbody id="history"></tbody>
+    </table>
   </div>
 </div>
 
-<!-- Success screen -->
-<div id="success-screen">
-  <div class="success-card">
-    <div class="success-icon">✓</div>
-    <h2 style="font-size:18px;color:var(--text)">Requisition Submitted</h2>
-    <div class="success-id" id="success-id"></div>
-    <div class="success-msg" id="success-msg"></div>
-    <button class="btn btn-primary" onclick="newRequisition()" style="margin-top:24px">
-      Submit another
-    </button>
+<!-- Detail -------------------------------------------------------------- -->
+<div class="shell" id="screen-detail" hidden>
+  <button class="back" onclick="goPortal()">&larr; All requests</button>
+  <div class="banner" id="detail-banner">
+    <div id="detail-banner-text"></div>
+    <button class="close" onclick="hideDetailBanner()" aria-label="Dismiss">&times;</button>
   </div>
+  <div class="panel"><div class="panel-body" id="detail-body"></div></div>
 </div>
+
+<dialog id="fulfil-dialog">
+  <form method="dialog">
+    <div class="head">
+      <h3>Record fulfilment</h3>
+      <p id="fulfil-for"></p>
+    </div>
+    <div class="body">
+      <div class="field">
+        <label for="fulfil-payment">How was it paid for? <span class="req-mark">*</span></label>
+        <select id="fulfil-payment">
+          <option value="">Choose…</option>
+          <option value="Visa">Visa</option>
+          <option value="Mastercard">Mastercard</option>
+          <option value="Amex">Amex</option>
+          <option value="From stock">From stock — no purchase</option>
+        </select>
+      </div>
+      <div class="field" style="margin-bottom:0">
+        <label for="fulfil-note">What was done? <span class="req-mark">*</span></label>
+        <textarea id="fulfil-note"
+          placeholder="Ordered from Amazon, arriving Thursday. Or: issued Logitech M720 from stock."></textarea>
+      </div>
+    </div>
+    <div class="foot">
+      <button class="btn btn-quiet" value="cancel">Cancel</button>
+      <button class="btn btn-go" value="confirm" id="fulfil-confirm">Save</button>
+    </div>
+  </form>
+</dialog>
 
 <script>
-// ── CONFIG ──────────────────────────────────────────────────────────────────
+"use strict";
+
+/* ── Configuration ─────────────────────────────────────────────────────── */
 
 const CONFIG = {
-  clientId:     '6bfa3adb-1f7d-44e4-8cb9-38be4a107549',
-  tenantId:     '4c9a50a1-c27f-4044-8025-b59b5b804d16',
-  redirectUri:  'https://orange-bay-0e0de3210.7.azurestaticapps.net/requisition/',
-  spSite:       'https://macrodyne.sharepoint.com/sites/Requisitions',
-  crdSite:      'https://macrodyne.sharepoint.com/sites/CorporateReferenceData',
-  backendUrl:   'https://macrodyne-requisition-g7f9dxcxetg0hwcc.canadacentral-01.azurewebsites.net',
-  capAmount:    5000,
-  warnAmount:   4000,
+  clientId:    "6bfa3adb-1f7d-44e4-8cb9-38be4a107549",
+  tenantId:    "4c9a50a1-c27f-4044-8025-b59b5b804d16",
+  redirectUri: "https://orange-bay-0e0de3210.7.azurestaticapps.net/requisition/",
+  api:         "https://macrodyne-requisition-g7f9dxcxetg0hwcc.canadacentral-01.azurewebsites.net",
+  cap:         5000,
+  capWarnFrom: 4000,
 };
 
-const GRAPH_SCOPES = [
-  'https://graph.microsoft.com/Sites.Read.All',
-  'https://graph.microsoft.com/User.Read',
-];
-const SP_SCOPES = [
-  'https://macrodyne.sharepoint.com/AllSites.Read',
-];
+const SIGN_IN_SCOPES = ["User.Read"];
 
-// ── STATE ────────────────────────────────────────────────────────────────────
+/* Status wording and colour. The backend uses internal names; people
+   should never see them. */
+const STATUS = {
+  Draft:                   { text: "Draft",                tone: "moving"  },
+  PendingManager:          { text: "With your manager",    tone: "waiting" },
+  PendingAP:               { text: "With Finance",         tone: "waiting" },
+  ApprovedPendingPurchase: { text: "Approved, being bought", tone: "moving" },
+  Ordered:                 { text: "Being handled",        tone: "moving"  },
+  ReceivedByPurchaser:     { text: "Ready to collect",     tone: "waiting" },
+  ConfirmedByRequestor:    { text: "Collected",            tone: "done"    },
+  Closed:                  { text: "Closed",               tone: "done"    },
+  RejectedByManager:       { text: "Declined by manager",  tone: "stopped" },
+  RejectedByAP:            { text: "Declined by Finance",  tone: "stopped" },
+  RejectedAtPurchase:      { text: "Could not be bought",  tone: "stopped" },
+  CancelledByRequestor:    { text: "Withdrawn",            tone: "stopped" },
+};
 
-let msalInstance = null;
-let currentUser  = {};
-let catalogue    = [];
-let currency     = 'CAD';
-let lineCount    = 0;
+/* Button wording. The key matches what the backend returns in
+   allowedActions, so a new action only needs an entry here. */
+const ACTION = {
+  Approve:          { label: "Approve",            style: "btn-go",     asks: false },
+  Reject:           { label: "Decline",            style: "btn-stop",   asks: "Why are you declining this?" },
+  Cancel:           { label: "Withdraw",           style: "btn-stop",   asks: "Why are you withdrawing this?" },
+  MarkOrdered:      { label: "Record fulfilment",   style: "btn-go",  asks: "dialog" },
+  MarkReceived:     { label: "Mark as arrived",    style: "btn-go",     asks: false },
+  ConfirmReceipt:   { label: "I have collected it", style: "btn-go",    asks: false },
+  RejectAtPurchase: { label: "Cannot buy this",    style: "btn-stop",   asks: "What stopped the purchase?" },
+  CopyToNew:        { label: "Start a new one from this", style: "btn-quiet", asks: false },
+};
 
-// ── MSAL INIT ────────────────────────────────────────────────────────────────
+/* ── State ─────────────────────────────────────────────────────────────── */
 
-async function initMsal() {
-  msalInstance = new msal.PublicClientApplication({
-    auth: {
-      clientId:    CONFIG.clientId,
-      authority:   `https://login.microsoftonline.com/${CONFIG.tenantId}`,
-      redirectUri: CONFIG.redirectUri,
-    },
-    cache: { cacheLocation: 'sessionStorage' },
-  });
+let msalClient = null;
+let me         = null;   // actor record from /api/portal
+let catalogue  = [];
+let currency   = "CAD";
+let lineSeq    = 0;
+let portalData = null;   // last /api/portal response, for CopyToNew
 
-  await msalInstance.initialize();
+/* ── Sign-in ───────────────────────────────────────────────────────────── */
 
-  // Handle redirect response
-  const response = await msalInstance.handleRedirectPromise();
-  if (response) {
-    msalInstance.setActiveAccount(response.account);
-  }
+async function start() {
+  try {
+    msalClient = new msal.PublicClientApplication({
+      auth: {
+        clientId:    CONFIG.clientId,
+        authority:   `https://login.microsoftonline.com/${CONFIG.tenantId}`,
+        redirectUri: CONFIG.redirectUri,
+      },
+      cache: { cacheLocation: "sessionStorage" },
+    });
+    await msalClient.initialize();
 
-  const accounts = msalInstance.getAllAccounts();
-  if (accounts.length > 0) {
-    msalInstance.setActiveAccount(accounts[0]);
-    await onSignedIn();
-  } else {
-    showScreen('auth');
+    const redirect = await msalClient.handleRedirectPromise();
+    if (redirect) msalClient.setActiveAccount(redirect.account);
+
+    const accounts = msalClient.getAllAccounts();
+    if (!accounts.length) return show("signin");
+
+    msalClient.setActiveAccount(accounts[0]);
+    await load();
+  } catch (err) {
+    console.error("Sign-in failed", err);
+    show("signin");
   }
 }
 
 function signIn() {
-  msalInstance.loginRedirect({ scopes: GRAPH_SCOPES });
+  msalClient.loginRedirect({ scopes: SIGN_IN_SCOPES });
 }
 
-async function getGraphToken() {
-  const result = await msalInstance.acquireTokenSilent({
-    scopes:  GRAPH_SCOPES,
-    account: msalInstance.getActiveAccount(),
+function myUpn() {
+  const account = msalClient.getActiveAccount();
+  return account ? account.username : "";
+}
+
+/* ── API ───────────────────────────────────────────────────────────────── */
+
+async function apiGet(path) {
+  const r = await fetch(`${CONFIG.api}${path}`);
+  const body = await r.json();
+  if (!body.success) throw new Error(body.error || "Something went wrong.");
+  return body;
+}
+
+async function apiPost(payload) {
+  const r = await fetch(`${CONFIG.api}/api/requisition`, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ ...payload, upn: myUpn() }),
   });
-  return result.accessToken;
+  const body = await r.json();
+  if (!body.success) throw new Error(body.error || "Something went wrong.");
+  return body;
 }
 
-async function getSpToken() {
-  const result = await msalInstance.acquireTokenSilent({
-    scopes:  SP_SCOPES,
-    account: msalInstance.getActiveAccount(),
-  });
-  return result.accessToken;
-}
+/* ── Load ──────────────────────────────────────────────────────────────── */
 
-// ── SIGN IN FLOW ─────────────────────────────────────────────────────────────
-
-async function onSignedIn() {
-  const account = msalInstance.getActiveAccount();
-  const upn     = account.username;
-  const name    = account.name || upn;
-
-  // Update header
-  document.getElementById('user-name-header').textContent = name;
-  const initials = name.split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase();
-  document.getElementById('user-initials').textContent = initials;
-
-  // Resolve identity from Employee Master
+async function load() {
+  show("loading");
   try {
-    const emp = await resolveEmployee(upn);
-    currentUser = {
-      upn,
-      empNo:        emp?.Employee_x0020_Number || '',
-      fullName:     emp?.Full_x0020_Name       || name,
-      dept:         emp?.Department_x0020_Name || '',
-      managerEmpNo: emp?.ManagerEmpNo          || '',
-      managerName:  '',
-      roleCode:     emp?.Role_x0020_Code       || '',
-    };
-    if (currentUser.managerEmpNo) {
+    portalData = await apiGet(`/api/portal?upn=${encodeURIComponent(myUpn())}`);
+    me = portalData.actor;
+    paintWho();
+
+    if (!catalogue.length) {
       try {
-        currentUser.managerName = await resolveManagerName(currentUser.managerEmpNo);
-      } catch(e) {
-        currentUser.managerName = `EmpNo ${currentUser.managerEmpNo}`;
+        const c = await apiGet("/api/catalogue");
+        catalogue = c.items || [];
+      } catch (err) {
+        // A missing catalogue should not block a request — people can
+        // still describe what they need in free text.
+        console.warn("Catalogue unavailable", err);
       }
     }
-  } catch(e) {
-    currentUser = { upn, empNo: '', fullName: name, dept: '', managerEmpNo: '', managerName: '' };
-    console.warn('Employee Master lookup failed:', e);
+
+    const deepLink = new URLSearchParams(location.search).get("req");
+    if (deepLink) return openDetail(deepLink);
+
+    paintPortal();
+    show("portal");
+  } catch (err) {
+    show("portal");
+    say(err.message, false);
+  }
+}
+
+function paintWho() {
+  document.getElementById("who-name").textContent = me.fullName;
+  const role =
+    me.isFinanceHigh ? "Finance" :
+    me.isFinanceLow  ? "Finance" :
+    me.isFulfillment ? "Purchasing" : "";
+  const chip = document.getElementById("who-role");
+  chip.textContent = role;
+  chip.hidden = !role;
+}
+
+/* ── Portal ────────────────────────────────────────────────────────────── */
+
+function paintPortal() {
+  if (!document.querySelector(".line")) addLine();
+
+  paintRows("queue", portalData.queue, true);
+  document.getElementById("queue-head").hidden = !portalData.queue.length;
+  document.getElementById("queue").hidden      = !portalData.queue.length;
+  document.getElementById("queue-count").textContent = countText(portalData.queue);
+
+  paintRows("active", portalData.active, false);
+  document.getElementById("active-count").textContent = countText(portalData.active);
+  if (!portalData.active.length) {
+    document.getElementById("active").innerHTML =
+      `<div class="empty">Nothing open right now. Anything you send will show up here.</div>`;
   }
 
-  // Populate requestor info panel
-  document.getElementById('info-name').textContent    = currentUser.fullName;
-  document.getElementById('info-email').textContent   = upn;
-  document.getElementById('info-dept').textContent    = currentUser.dept    || '—';
-  document.getElementById('info-manager').textContent = currentUser.managerName || (currentUser.managerEmpNo ? `EmpNo ${currentUser.managerEmpNo}` : 'None (top of chain)');
-
-  // Load catalogue
-  try {
-    catalogue = await loadCatalogue();
-  } catch(e) {
-    console.warn('Catalogue load failed:', e);
-    catalogue = [];
-  }
-
-  // Add first line item
-  addLine();
-
-  showScreen('main');
+  paintHistory(portalData.history);
 }
 
-// ── SHAREPOINT HELPERS ───────────────────────────────────────────────────────
-
-async function spGet(site, listName, filter) {
-  const token = await getSpToken();
-  let url = `${site}/_api/web/lists/getbytitle('${encodeURIComponent(listName)}')/items`;
-  if (filter) url += `?$filter=${encodeURIComponent(filter)}`;
-  const r = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
-  });
-  if (!r.ok) throw new Error(`SP GET failed: ${r.status}`);
-  const data = await r.json();
-  return data.value || [];
+function countText(list) {
+  return list.length ? `${list.length}` : "";
 }
 
-async function resolveEmployee(upn) {
-  const token = await getSpToken();
-  const url = `${CONFIG.crdSite}/_api/web/lists/getbytitle('Employee Master')/items?$filter=M365_x0020_UPN eq '${upn}'&$top=1`;
-  const r = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
-  });
-  if (!r.ok) throw new Error(`SP GET failed: ${r.status}`);
-  const data = await r.json();
-  return data.value?.[0] || null;
+function paintRows(elementId, list, needsYou) {
+  const host = document.getElementById(elementId);
+  host.innerHTML = list.map(r => {
+    const s = statusOf(r.status);
+    return `
+      <button class="row-card ${needsYou ? "needs-you" : ""}" onclick="openDetail('${r.requisitionID}')">
+        <span class="req-id">${r.requisitionID}</span>
+        <span class="why">${escape(r.reason)}</span>
+        <span><span class="pill ${s.tone}">${s.text}</span></span>
+        <span class="amount">${money(r.totalAmount, r.currency)}</span>
+      </button>`;
+  }).join("");
 }
 
-async function resolveManagerName(managerEmpNo) {
-  if (!managerEmpNo) return '';
-  const token = await getSpToken();
-  const url = `${CONFIG.crdSite}/_api/web/lists/getbytitle('Employee Master')/items?$filter=Employee_x0020_Number eq '${managerEmpNo}'&$top=1`;
-  const r = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
-  });
-  if (!r.ok) return `EmpNo ${managerEmpNo}`;
-  const data = await r.json();
-  return data.value?.[0]?.Full_x0020_Name || `EmpNo ${managerEmpNo}`;
+function paintHistory(list) {
+  document.getElementById("history-head").hidden  = !list.length;
+  document.getElementById("history-panel").hidden = !list.length;
+  document.getElementById("history-count").textContent = countText(list);
+
+  document.getElementById("history").innerHTML = list.map(r => {
+    const s = statusOf(r.status);
+    return `
+      <tr>
+        <td class="req-id"><button class="link-btn" onclick="openDetail('${r.requisitionID}')">${r.requisitionID}</button></td>
+        <td>${escape(r.reason)}</td>
+        <td><span class="pill ${s.tone}">${s.text}</span></td>
+        <td class="amount">${money(r.totalAmount, r.currency)}</td>
+        <td><button class="link-btn" onclick="copyToNew('${r.requisitionID}')">Reuse</button></td>
+      </tr>`;
+  }).join("");
 }
 
-async function loadCatalogue() {
-  const token = await getSpToken();
-  const url = `${CONFIG.spSite}/_api/web/lists/getbytitle('Requisition Items Catalogue')/items?$top=100`;
-  const r = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
-  });
-  if (!r.ok) {
-    const text = await r.text();
-    console.error('Catalogue error:', r.status, text);
-    return [];
-  }
-  const data = await r.json();
-  console.log('Catalogue row sample:', data.value?.[0]); // shows ALL field names
-  return data.value || [];
-}
+/* ── Line items ────────────────────────────────────────────────────────── */
 
-// ── LINE ITEMS ───────────────────────────────────────────────────────────────
+function addLine(prefill) {
+  const id = ++lineSeq;
+  const options = catalogue.map(c =>
+    `<option value="${escape(c.itemCode)}">${escape(c.itemName)}</option>`
+  ).join("");
 
-function addLine() {
-  lineCount++;
-  const id = lineCount;
-  const container = document.getElementById('line-items-container');
-
-  const div = document.createElement('div');
-  div.className = 'line-item';
-  div.id = `line-${id}`;
-  div.innerHTML = `
-    <select onchange="onCatalogueChange(${id})" id="cat-${id}">
-      <option value="">— Select item —</option>
-      ${catalogue.map(c =>
-        `<option value="${c.Title || c.ItemCode}"
-                data-urls="${escHtml(c.SuggestedURLs||'')}">${escHtml(c.ItemName)}</option>`
-      ).join('')}
-      <option value="OTHER">Other (free-text)</option>
+  const row = document.createElement("div");
+  row.className = "line";
+  row.id = `line-${id}`;
+  row.innerHTML = `
+    <select id="code-${id}">
+      <option value="">Choose an item…</option>
+      ${options}
+      <option value="OTHER">Something else</option>
     </select>
-    <input type="text"  id="desc-${id}"  placeholder="Brand / model / details" />
-    <input type="number" id="qty-${id}"   value="1" min="1" step="1"
-           oninput="recalc()" style="text-align:center" />
-    <input type="number" id="price-${id}" value="" min="0" step="0.01"
-           placeholder="0.00" oninput="recalc()" />
-    <button class="btn-remove" onclick="removeLine(${id})" title="Remove">×</button>
-  `;
-  container.appendChild(div);
+    <input type="text"   id="desc-${id}"  placeholder="Make, model, size">
+    <input type="number" id="qty-${id}"   value="1" min="1" step="1" oninput="recalc()">
+    <input type="number" id="price-${id}" min="0" step="0.01" placeholder="0.00" oninput="recalc()">
+    <button class="icon-btn" onclick="removeLine(${id})" aria-label="Remove this item">&times;</button>`;
+  document.getElementById("lines").appendChild(row);
+
+  if (prefill) {
+    document.getElementById(`code-${id}`).value  = prefill.itemCode || "";
+    document.getElementById(`desc-${id}`).value  = prefill.itemDescription || "";
+    document.getElementById(`qty-${id}`).value   = prefill.quantity || 1;
+    document.getElementById(`price-${id}`).value = prefill.unitPriceEstimate || "";
+  }
   recalc();
 }
 
 function removeLine(id) {
-  const el = document.getElementById(`line-${id}`);
-  if (el) el.remove();
-  // Don't allow empty
-  if (document.querySelectorAll('.line-item').length === 0) addLine();
+  const row = document.getElementById(`line-${id}`);
+  if (row) row.remove();
+  if (!document.querySelector(".line")) addLine();
   recalc();
 }
 
-function onCatalogueChange(id) {
-  const sel   = document.getElementById(`cat-${id}`);
-  const desc  = document.getElementById(`desc-${id}`);
-  const price = document.getElementById(`price-${id}`);
-  const opt   = sel.options[sel.selectedIndex];
-
-  if (sel.value === 'OTHER') {
-    desc.placeholder = 'Describe the item in detail';
-    desc.value = '';
-    desc.focus();
-  } else if (sel.value) {
-    // Auto-fill description with item name as starting point
-    if (!desc.value) desc.value = '';
-    desc.placeholder = 'Brand / model / details';
-  }
-  recalc();
+function readLines() {
+  return [...document.querySelectorAll(".line")].map(row => {
+    const id = row.id.replace("line-", "");
+    return {
+      itemCode:          val(`code-${id}`) || "OTHER",
+      itemDescription:   val(`desc-${id}`).trim(),
+      quantity:          num(`qty-${id}`, 1),
+      unitPriceEstimate: num(`price-${id}`, 0),
+    };
+  });
 }
 
 function recalc() {
-  let total = 0;
-  document.querySelectorAll('.line-item').forEach(row => {
-    const id    = row.id.replace('line-','');
-    const qty   = parseFloat(document.getElementById(`qty-${id}`)?.value)   || 0;
-    const price = parseFloat(document.getElementById(`price-${id}`)?.value) || 0;
-    total += qty * price;
-  });
+  const total = readLines().reduce((sum, l) => sum + l.quantity * l.unitPriceEstimate, 0);
 
-  const bar  = document.getElementById('total-bar');
-  const disp = document.getElementById('total-display');
-  const msg  = document.getElementById('cap-msg');
+  document.getElementById("total").textContent = money(total, currency);
 
-  disp.textContent = `$${total.toLocaleString('en-CA', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+  const row  = document.getElementById("total-row");
+  const note = document.getElementById("cap-note");
+  row.className  = "total-row";
+  note.className = "cap-note";
 
-  bar.classList.remove('warn','over');
-  msg.classList.remove('show','warn','over');
-
-  if (total > CONFIG.capAmount) {
-    bar.classList.add('over');
-    msg.textContent = `⚠ Total exceeds the ${currency} $${CONFIG.capAmount.toLocaleString()} cap. Please use the formal PO process or reduce the total.`;
-    msg.classList.add('show','over');
-  } else if (total > CONFIG.warnAmount) {
-    bar.classList.add('warn');
-    msg.textContent = `Total is approaching the ${currency} $${CONFIG.capAmount.toLocaleString()} cap.`;
-    msg.classList.add('show','warn');
+  if (total > CONFIG.cap) {
+    row.classList.add("over");
+    note.classList.add("show", "over");
+    note.textContent =
+      `Over the ${currency} $${CONFIG.cap.toLocaleString()} limit for this form. ` +
+      `Raise a purchase order instead, or split the request.`;
+  } else if (total > CONFIG.capWarnFrom) {
+    row.classList.add("warn");
+    note.classList.add("show", "warn");
+    note.textContent = `Close to the ${currency} $${CONFIG.cap.toLocaleString()} limit.`;
   }
 
-  // Enable/disable submit
-  document.getElementById('submit-btn').disabled = total > CONFIG.capAmount;
+  document.getElementById("submit-btn").disabled = total > CONFIG.cap;
   return total;
 }
 
-// ── CURRENCY ─────────────────────────────────────────────────────────────────
-
-function setCurrency(c) {
-  currency = c;
-  document.getElementById('btn-cad').classList.toggle('active', c === 'CAD');
-  document.getElementById('btn-usd').classList.toggle('active', c === 'USD');
+function setCurrency(next) {
+  currency = next;
+  document.getElementById("cur-CAD").setAttribute("aria-pressed", String(next === "CAD"));
+  document.getElementById("cur-USD").setAttribute("aria-pressed", String(next === "USD"));
   recalc();
 }
 
-// ── SUBMIT ───────────────────────────────────────────────────────────────────
+/* ── Submit ────────────────────────────────────────────────────────────── */
 
-async function submitRequisition() {
-  hideError();
+async function submitRequest() {
+  hideBanner();
 
-  // Validate reason
-  const reason = document.getElementById('reason').value.trim();
+  const reason = val("reason").trim();
   if (!reason) {
-    showError('Please provide a reason for this purchase.');
-    document.getElementById('reason').focus();
+    say("Add a line about what this is for.", false);
+    document.getElementById("reason").focus();
     return;
   }
 
-  // Collect line items
-  const lineItems = [];
-  let valid = true;
-  document.querySelectorAll('.line-item').forEach(row => {
-    const id    = row.id.replace('line-','');
-    const cat   = document.getElementById(`cat-${id}`)?.value   || 'OTHER';
-    const desc  = document.getElementById(`desc-${id}`)?.value.trim() || '';
-    const qty   = parseFloat(document.getElementById(`qty-${id}`)?.value)   || 0;
-    const price = parseFloat(document.getElementById(`price-${id}`)?.value) || 0;
-
-    if (!cat || !desc || qty <= 0 || price <= 0) {
-      valid = false;
-    } else {
-      lineItems.push({
-        itemCode:          cat,
-        itemDescription:   desc,
-        quantity:          qty,
-        unitPriceEstimate: price,
-        itemURL:           '',
-      });
-    }
-  });
-
-  if (!valid || lineItems.length === 0) {
-    showError('Please complete all line items — item, description, quantity and price are required for each row.');
+  const lines = readLines();
+  const incomplete = lines.some(l =>
+    !l.itemDescription || l.quantity <= 0 || l.unitPriceEstimate <= 0
+  );
+  if (incomplete) {
+    say("Every item needs a description, a quantity and a price.", false);
     return;
   }
 
-  // Cap check (client side)
-  const total = lineItems.reduce((s,l) => s + l.quantity * l.unitPriceEstimate, 0);
-  if (total > CONFIG.capAmount) {
-    showError(`Total exceeds the ${currency} $${CONFIG.capAmount.toLocaleString()} cap. Please use the formal PO process.`);
-    return;
-  }
-
-  // Build payload
-  const payload = {
-    action:                 'Submit',
-    requestorEmpNo:         currentUser.empNo,
-    requestorUPN:           currentUser.upn,
-    requestorFullName:      currentUser.fullName,
-    requestorManagerEmpNo:  currentUser.managerEmpNo,
-    requestorDept:          currentUser.dept,
-    currency,
-    reason,
-    lineItems,
-  };
-
-  // Submit
-  const btn = document.getElementById('submit-btn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Submitting…';
+  const button = document.getElementById("submit-btn");
+  const restore = button.textContent;
+  button.disabled = true;
+  button.innerHTML = `<span class="spinner"></span> Sending`;
 
   try {
-    const r = await fetch(`${CONFIG.backendUrl}/api/requisition`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(payload),
+    const result = await apiPost({
+      action: "Submit", currency, reason, lineItems: lines,
     });
-    const result = await r.json();
-
-    if (result.success) {
-      showSuccess(result.requisitionID, currentUser.managerEmpNo);
-    } else if (result.capExceeded) {
-      showError(result.error);
-    } else {
-      showError(result.error || 'Submission failed. Please try again or contact IT.');
-    }
-  } catch(e) {
-    showError('Could not reach the requisition service. Please check your connection and try again.');
+    resetForm();
+    await refresh();
+    say(`<strong>${result.requisitionID}</strong> sent for approval. You will get an email at each step.`, true);
+  } catch (err) {
+    say(err.message, false);
   } finally {
-    btn.disabled = false;
-    btn.innerHTML = 'Submit for approval';
+    button.disabled = false;
+    button.textContent = restore;
     recalc();
   }
 }
 
-// ── SUCCESS / RESET ──────────────────────────────────────────────────────────
-
-function showSuccess(reqId, hasManager) {
-  document.getElementById('success-id').textContent = reqId;
-  document.getElementById('success-msg').innerHTML =
-    hasManager
-      ? `Your requisition has been submitted and is awaiting manager approval. You will receive email updates at each stage.`
-      : `Your requisition has been submitted for AP approval. You will receive email updates at each stage.`;
-  showScreen('success');
-}
-
-function newRequisition() {
-  resetForm();
-  showScreen('main');
-}
-
 function resetForm() {
-  document.getElementById('reason').value = '';
-  document.getElementById('line-items-container').innerHTML = '';
-  lineCount = 0;
-  setCurrency('CAD');
-  hideError();
+  document.getElementById("reason").value = "";
+  document.getElementById("lines").innerHTML = "";
+  lineSeq = 0;
+  setCurrency("CAD");
   addLine();
 }
 
-// ── UI HELPERS ───────────────────────────────────────────────────────────────
-
-function showScreen(name) {
-  document.getElementById('auth-screen').style.display    = name === 'auth'    ? 'flex'  : 'none';
-  document.getElementById('main-screen').style.display    = name === 'main'    ? 'block' : 'none';
-  document.getElementById('success-screen').style.display = name === 'success' ? 'flex'  : 'none';
+async function copyToNew(requisitionId) {
+  try {
+    const detail = await apiGet(
+      `/api/requisition/${requisitionId}?upn=${encodeURIComponent(myUpn())}`
+    );
+    goPortal();
+    document.getElementById("reason").value = detail.requisition.reason || "";
+    setCurrency(detail.requisition.currency || "CAD");
+    document.getElementById("lines").innerHTML = "";
+    lineSeq = 0;
+    detail.lineItems.forEach(addLine);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    say(`Copied from ${requisitionId}. Adjust anything you need, then send.`, true);
+  } catch (err) {
+    say(err.message, false);
+  }
 }
 
-function showError(msg) {
-  const el = document.getElementById('error-banner');
-  el.textContent = msg;
-  el.classList.add('show');
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+/* ── Detail ────────────────────────────────────────────────────────────── */
+
+async function openDetail(requisitionId) {
+  show("loading");
+  try {
+    const detail = await apiGet(
+      `/api/requisition/${requisitionId}?upn=${encodeURIComponent(myUpn())}`
+    );
+    paintDetail(detail);
+    history.replaceState(null, "", `?req=${encodeURIComponent(requisitionId)}`);
+    show("detail");
+  } catch (err) {
+    show("portal");
+    say(err.message, false);
+  }
 }
 
-function hideError() {
-  document.getElementById('error-banner').classList.remove('show');
+function paintDetail(detail) {
+  const r = detail.requisition;
+  const s = statusOf(r.status);
+
+  const lineRows = detail.lineItems.map(l => `
+    <tr>
+      <td>${escape(l.itemDescription)}</td>
+      <td style="text-align:center">${l.quantity}</td>
+      <td class="amount">${money(l.unitPriceEstimate, r.currency)}</td>
+      <td class="amount">${money(l.quantity * l.unitPriceEstimate, r.currency)}</td>
+    </tr>`).join("");
+
+  const trail = detail.history.map(h => `
+    <li>
+      <div>${statusOf(h.toStatus).text}</div>
+      <div class="when">${when(h.transitionUtc)}</div>
+      ${h.comment ? `<div class="note">${escape(h.comment)}</div>` : ""}
+    </li>`).join("");
+
+  const buttons = detail.allowedActions.map(name => {
+    const a = ACTION[name];
+    if (!a) return "";
+    if (name === "CopyToNew") {
+      return `<button class="btn ${a.style}" onclick="copyToNew('${r.requisitionID}')">${a.label}</button>`;
+    }
+    return `<button class="btn ${a.style}" onclick="runAction('${name}','${r.requisitionID}')">${a.label}</button>`;
+  }).join("");
+
+  document.getElementById("detail-body").innerHTML = `
+    <div class="detail-top">
+      <div>
+        <h2 class="req-id">${r.requisitionID}</h2>
+        <div style="margin-top:5px"><span class="pill ${s.tone}">${s.text}</span></div>
+      </div>
+      <div class="amount">${money(r.totalAmount, r.currency)}</div>
+    </div>
+
+    <dl class="facts">
+      <div class="fact"><dt>Requested by</dt><dd>${escape(r.requestorName)}</dd></div>
+      <div class="fact"><dt>Sent</dt><dd>${when(r.submittedUtc)}</dd></div>
+      ${r.paymentMode ? `<div class="fact"><dt>Paid with</dt><dd>${escape(r.paymentMode)}</dd></div>` : ""}
+    </dl>
+
+    <div class="fact" style="margin-bottom:20px">
+      <dt>What for</dt><dd>${escape(r.reason)}</dd>
+    </div>
+
+    <table style="margin-bottom:20px">
+      <thead><tr>
+        <th>Item</th><th style="text-align:center">Qty</th>
+        <th style="text-align:right">Unit</th><th style="text-align:right">Total</th>
+      </tr></thead>
+      <tbody>${lineRows}</tbody>
+    </table>
+
+    ${r.fulfillmentComment ? `
+      <div class="fact" style="margin-bottom:20px">
+        <dt>What purchasing did</dt><dd>${escape(r.fulfillmentComment)}</dd>
+      </div>` : ""}
+
+    ${r.rejectionReason ? `
+      <div class="banner bad show" style="margin-bottom:20px">
+        <div><strong>Reason given:</strong> ${escape(r.rejectionReason)}</div>
+      </div>` : ""}
+
+    ${trail ? `
+      <div class="section-head" style="margin-top:0"><h2>Progress</h2></div>
+      <ul class="trail">${trail}</ul>` : ""}
+
+    ${buttons ? `<div class="action-bar">${buttons}</div>` : ""}`;
 }
 
-function escHtml(str) {
-  return String(str)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+async function runAction(name, requisitionId) {
+  const a = ACTION[name];
+  const extra = {};
+
+  if (a.asks === "dialog") {
+    const answers = await askFulfilment(requisitionId);
+    if (!answers) return;                   // cancelled
+    extra.paymentMode = answers.paymentMode;
+    extra.comment     = answers.note;
+  } else if (a.asks) {
+    const reason = (window.prompt(a.asks) || "").trim();
+    if (!reason) return;                    // cancelled, or gave no reason
+    extra.comment = reason;
+  }
+
+  try {
+    await apiPost({ action: name, requisitionID: requisitionId, ...extra });
+    await refresh();
+    goPortal();
+    say(`${a.label} — done for <strong>${requisitionId}</strong>.`, true);
+  } catch (err) {
+    sayOnDetail(err.message, false);
+  }
 }
 
-// ── BOOT ─────────────────────────────────────────────────────────────────────
+function askFulfilment(requisitionId) {
+  /* Resolves to {paymentMode, note}, or null when cancelled. Both fields
+     are required, so the dialog will not close on Save until they are set. */
+  return new Promise(resolve => {
+    const dialog  = document.getElementById("fulfil-dialog");
+    const payment = document.getElementById("fulfil-payment");
+    const note    = document.getElementById("fulfil-note");
 
-initMsal().catch(err => {
-  console.error('MSAL init error:', err);
-  document.getElementById('auth-screen').style.display = 'flex';
-});
+    document.getElementById("fulfil-for").textContent = requisitionId;
+    payment.value = "";
+    note.value    = "";
+
+    function onClose() {
+      dialog.removeEventListener("close", onClose);
+      confirmBtn.removeEventListener("click", onConfirm);
+      resolve(
+        dialog.returnValue === "confirm"
+          ? { paymentMode: payment.value, note: note.value.trim() }
+          : null
+      );
+    }
+
+    const confirmBtn = document.getElementById("fulfil-confirm");
+    function onConfirm(event) {
+      if (!payment.value || !note.value.trim()) {
+        event.preventDefault();             // keep the dialog open
+        (!payment.value ? payment : note).focus();
+      }
+    }
+
+    confirmBtn.addEventListener("click", onConfirm);
+    dialog.addEventListener("close", onClose);
+    dialog.showModal();
+    payment.focus();
+  });
+}
+
+/* ── Navigation ────────────────────────────────────────────────────────── */
+
+function goPortal() {
+  history.replaceState(null, "", location.pathname);
+  paintPortal();
+  show("portal");
+}
+
+async function refresh() {
+  portalData = await apiGet(`/api/portal?upn=${encodeURIComponent(myUpn())}`);
+  me = portalData.actor;
+  paintWho();
+  paintPortal();
+}
+
+function show(screen) {
+  ["signin", "loading", "portal", "detail"].forEach(name => {
+    document.getElementById(`screen-${name}`).hidden = (name !== screen);
+  });
+}
+
+/* ── Messages ──────────────────────────────────────────────────────────── */
+
+function say(html, good) {
+  const banner = document.getElementById("banner");
+  document.getElementById("banner-text").innerHTML = html;
+  banner.className = `banner show ${good ? "good" : "bad"}`;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function hideBanner() {
+  document.getElementById("banner").className = "banner";
+}
+
+function sayOnDetail(html, good) {
+  const banner = document.getElementById("detail-banner");
+  document.getElementById("detail-banner-text").innerHTML = html;
+  banner.className = `banner show ${good ? "good" : "bad"}`;
+}
+
+function hideDetailBanner() {
+  document.getElementById("detail-banner").className = "banner";
+}
+
+/* ── Small helpers ─────────────────────────────────────────────────────── */
+
+function statusOf(code) {
+  return STATUS[code] || { text: code || "Unknown", tone: "moving" };
+}
+
+function money(amount, cur) {
+  const value = Number(amount) || 0;
+  return `${cur === "USD" ? "US$" : "$"}${value.toLocaleString("en-CA", {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  })}`;
+}
+
+function when(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d)) return "—";
+  return d.toLocaleDateString("en-CA", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function val(id) {
+  const el = document.getElementById(id);
+  return el ? el.value : "";
+}
+
+function num(id, fallback) {
+  const parsed = parseFloat(val(id));
+  return isNaN(parsed) ? fallback : parsed;
+}
+
+function escape(text) {
+  return String(text ?? "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/* ── Go ────────────────────────────────────────────────────────────────── */
+
+start();
 </script>
 </body>
 </html>

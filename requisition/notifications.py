@@ -205,20 +205,26 @@ def send_ready_to_purchase(requisition_id, requestor_name, reason, total,
     )
 
 
-def send_ordered(requisition_id, payment_mode, ordered_date,
+def send_ordered(requisition_id, payment_mode, ordered_date, note,
                  requestor_upn, copy_to_addresses):
-    """Tell the requestor their items have been ordered."""
+    """Tell the requestor how their request was satisfied.
+
+    The note carries what purchasing actually did, which may be issuing an
+    item already in stock rather than buying one, so the wording stays
+    neutral about whether a purchase took place.
+    """
     body = _wrapper(f"""
-        <h2 style='color:{BRAND_BLUE};margin-top:0'>Your Requisition Has Been Ordered</h2>
+        <h2 style='color:{BRAND_BLUE};margin-top:0'>Your Request Is Being Handled</h2>
         {_summary_table(
             _field("Requisition", f"<strong>{requisition_id}</strong>")
-            + _field("Ordered", ordered_date[:10])
+            + _field("Date", ordered_date[:10])
             + _field("Payment", _escape(payment_mode))
+            + _field("What was done", _escape(note))
         )}
-        <p>You will be notified when your order arrives at the reception desk.</p>""")
+        <p>You will be notified when it is ready to collect from reception.</p>""")
 
     dao.send_mail(
-        f"Your requisition has been ordered — {requisition_id}",
+        f"Your requisition is being handled — {requisition_id}",
         body, [requestor_upn], copy_to_addresses,
     )
 
