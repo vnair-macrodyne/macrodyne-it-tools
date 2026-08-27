@@ -546,7 +546,7 @@ const STATUS = {
   ApprovedPendingPurchase: { text: "Approved, being bought", tone: "moving" },
   Ordered:                 { text: "Being handled",        tone: "moving"  },
   ReceivedByPurchaser:     { text: "Ready to collect",     tone: "waiting" },
-  ConfirmedByRequestor:    { text: "Collected",            tone: "done"    },
+  ConfirmedByRequestor:    { text: "Handed over",          tone: "done"    },
   Closed:                  { text: "Closed",               tone: "done"    },
   RejectedByManager:       { text: "Declined by manager",  tone: "stopped" },
   RejectedByAP:            { text: "Declined by Finance",  tone: "stopped" },
@@ -557,14 +557,19 @@ const STATUS = {
 /* Button wording. The key matches what the backend returns in
    allowedActions, so a new action only needs an entry here. */
 const ACTION = {
-  Approve:          { label: "Approve",            style: "btn-go",     asks: false },
-  Reject:           { label: "Decline",            style: "btn-stop",   asks: "Why are you declining this?" },
-  Cancel:           { label: "Withdraw",           style: "btn-stop",   asks: "Why are you withdrawing this?" },
-  MarkOrdered:      { label: "Record fulfilment",   style: "btn-go",  asks: "dialog" },
-  MarkReceived:     { label: "Mark as arrived",    style: "btn-go",     asks: false },
-  ConfirmReceipt:   { label: "I have collected it", style: "btn-go",    asks: false },
-  RejectAtPurchase: { label: "Cannot buy this",    style: "btn-stop",   asks: "What stopped the purchase?" },
-  CopyToNew:        { label: "Start a new one from this", style: "btn-quiet", asks: false },
+  Approve:          { label: "Approve",             style: "btn-go" },
+  Reject:           { label: "Decline",             style: "btn-stop",
+                      asks: "Why are you declining this?", required: true },
+  Cancel:           { label: "Withdraw",            style: "btn-stop",
+                      asks: "Why are you withdrawing this?", required: true },
+  MarkOrdered:      { label: "Record fulfilment",   style: "btn-go", asks: "dialog" },
+  MarkReceived:     { label: "Mark as arrived",     style: "btn-go" },
+  ConfirmHandover:  { label: "Handed over",         style: "btn-go",
+                      asks: "Anything worth noting? Leave blank if not.",
+                      required: false },
+  RejectAtPurchase: { label: "Cannot buy this",     style: "btn-stop",
+                      asks: "What stopped the purchase?", required: true },
+  CopyToNew:        { label: "Start a new one from this", style: "btn-quiet" },
 };
 
 /* ── State ─────────────────────────────────────────────────────────────── */
@@ -982,9 +987,17 @@ async function runAction(name, requisitionId) {
     extra.paymentMode = answers.paymentMode;
     extra.comment     = answers.note;
   } else if (a.asks) {
-    const reason = (window.prompt(a.asks) || "").trim();
-    if (!reason) return;                    // cancelled, or gave no reason
-    extra.comment = reason;
+    // prompt returns null when dismissed and "" when submitted empty. Only
+    // the first is a cancellation; an empty answer is fine where the note
+    // is optional.
+    const answer = window.prompt(a.asks);
+    if (answer === null) return;
+    const text = answer.trim();
+    if (a.required && !text) {
+      sayOnDetail("A reason is needed for this.", false);
+      return;
+    }
+    extra.comment = text;
   }
 
   try {

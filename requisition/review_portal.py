@@ -36,7 +36,7 @@ ENVELOPE       = {"requisition", "lineItems", "allowedActions", "items",
                   "itemCode", "itemName", "sortOrder", "success", "error"}
 
 BACKEND_ACTIONS = {"Submit", "Approve", "Reject", "Cancel", "MarkOrdered",
-                   "MarkReceived", "ConfirmReceipt", "RejectAtPurchase"}
+                   "MarkReceived", "ConfirmHandover", "RejectAtPurchase"}
 UI_ONLY_ACTIONS = {"CopyToNew"}      # handled in the page, never sent as-is
 
 # Arguments each action must arrive with, taken from the workflow functions

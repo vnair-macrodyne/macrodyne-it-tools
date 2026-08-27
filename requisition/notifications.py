@@ -231,36 +231,54 @@ def send_ordered(requisition_id, payment_mode, ordered_date, note,
 
 def send_received(requisition_id, received_date, confirm_within_days,
                   requestor_upn, copy_to_addresses):
-    """Tell the requestor their order has arrived and needs confirming."""
+    """Tell the requestor their item is at reception and ready to collect.
+
+    No action is asked of them — purchasing closes the requisition when they
+    hand it over. The collection window is stated so items do not sit at
+    reception indefinitely.
+    """
     body = _wrapper(f"""
-        <h2 style='color:{BRAND_BLUE};margin-top:0'>Your Order Has Arrived</h2>
-        <p>Your order is ready for pickup at the reception desk.</p>
+        <h2 style='color:{BRAND_BLUE};margin-top:0'>Ready to Collect</h2>
+        <p>Your item is at the reception desk.</p>
         {_summary_table(
             _field("Requisition", f"<strong>{requisition_id}</strong>")
             + _field("Arrived", received_date[:10])
         )}
-        <p>Please confirm receipt within
-           <strong>{confirm_within_days} business days</strong>.</p>
-        {_portal_link(requisition_id)}""")
+        <p>Please collect it within
+           <strong>{confirm_within_days} business days</strong>.
+           Nothing further is needed from you — the record is closed when
+           you pick it up.</p>""")
 
     dao.send_mail(
-        f"Your order has arrived — {requisition_id}",
+        f"Ready to collect — {requisition_id}",
         body, [requestor_upn], copy_to_addresses,
     )
 
 
-def send_receipt_confirmed(requisition_id, requestor_name,
-                           fulfiller_upn, copy_to_addresses):
-    """Tell fulfillment the requestor confirmed receipt and the loop is closed."""
+def send_handover_complete(requisition_id, note,
+                           requestor_upn, copy_to_addresses):
+    """Tell the requestor their item was handed over and the record is closed.
+
+    This is a statement, not a request. Purchasing has already closed the
+    requisition; the requestor is told so they have a record and can raise it
+    if anything is wrong.
+    """
+    note_row = _field("Note", _escape(note)) if note else ""
+
     body = _wrapper(f"""
-        <h2 style='color:{BRAND_BLUE};margin-top:0'>Receipt Confirmed</h2>
-        <p>{_escape(requestor_name)} has confirmed receipt of their order for
-           requisition <strong>{requisition_id}</strong>.
-           This requisition is now closed.</p>""")
+        <h2 style='color:{BRAND_BLUE};margin-top:0'>Collected and Closed</h2>
+        <p>Your requisition has been handed over and is now closed.</p>
+        {_summary_table(
+            _field("Requisition", f"<strong>{requisition_id}</strong>")
+            + note_row
+        )}
+        <p style='font-size:12px;color:{GREY_TEXT}'>
+          If you have not received this item, reply to whoever handles
+          purchasing so it can be looked into.</p>""")
 
     dao.send_mail(
-        f"Receipt confirmed — {requisition_id}",
-        body, [fulfiller_upn], copy_to_addresses,
+        f"Collected and closed — {requisition_id}",
+        body, [requestor_upn], copy_to_addresses,
     )
 
 

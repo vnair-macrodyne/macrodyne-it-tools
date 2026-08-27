@@ -223,8 +223,11 @@ def _handle_mark_received(actor, payload):
     return workflow.mark_received(payload.get("requisitionID", ""), actor)
 
 
-def _handle_confirm_receipt(actor, payload):
-    return workflow.confirm_receipt(payload.get("requisitionID", ""), actor)
+def _handle_confirm_handover(actor, payload):
+    return workflow.confirm_handover(
+        payload.get("requisitionID", ""), actor,
+        comment=payload.get("comment", ""),
+    )
 
 
 def _handle_reject_at_purchase(actor, payload):
@@ -243,7 +246,7 @@ ACTION_HANDLERS = {
     "Cancel":           _handle_cancel,
     "MarkOrdered":      _handle_mark_ordered,
     "MarkReceived":     _handle_mark_received,
-    "ConfirmReceipt":   _handle_confirm_receipt,
+    "ConfirmHandover":  _handle_confirm_handover,
     "RejectAtPurchase": _handle_reject_at_purchase,
 }
 

@@ -186,8 +186,11 @@ def allowed_actions(requisition, actor):
     elif status == config.STATUS_ORDERED and actor["is_fulfillment"]:
         actions += ["MarkReceived"]
 
-    elif status == config.STATUS_RECEIVED and is_requestor:
-        actions += ["ConfirmReceipt"]
+    elif status == config.STATUS_RECEIVED and actor["is_fulfillment"]:
+        # Purchasing closes the loop rather than the requestor. People collect
+        # their item and rarely come back to the portal, which left
+        # requisitions sitting open and made the records useless.
+        actions += ["ConfirmHandover"]
 
     # A requestor can withdraw their own request until it has been ordered.
     if is_requestor and status in config.CANCELLABLE_STATUSES:
@@ -951,12 +954,17 @@ def mark_received(requisition_id, actor):
     return {"status": "ok"}
 
 
-def confirm_receipt(requisition_id, actor):
-    """Requestor confirms they have the goods; the requisition closes."""
-    requisition = _load_for_action(requisition_id, actor, "ConfirmReceipt")
+def confirm_handover(requisition_id, actor, comment=""):
+    """Purchasing records that the item reached the requestor, closing it.
+
+    The requestor is told rather than asked. Waiting on them to confirm left
+    requisitions open indefinitely, so the person who physically hands the
+    item over is the one who closes the record.
+    """
+    requisition = _load_for_action(requisition_id, actor, "ConfirmHandover")
     sp_id       = requisition["ID"]
     now         = dao.utc_now_iso()
-    roles       = dao.load_roles()
+    note        = comment.strip() if comment else ""
 
     dao.update_requisition(sp_id, {
         "Status":       config.STATUS_CLOSED,
@@ -964,17 +972,22 @@ def confirm_receipt(requisition_id, actor):
         "ClosedUtc":    now,
     })
 
-    # Two history rows: the confirmation itself, then the automatic close.
-    # Keeping them separate means the audit trail shows why it closed.
-    _record_history(sp_id, requisition_id, config.STATUS_RECEIVED,
-                    config.STATUS_CONFIRMED, "Requestor confirmed receipt")
-    _record_history(sp_id, requisition_id, config.STATUS_CONFIRMED,
-                    config.STATUS_CLOSED, "Closed on receipt confirmation")
+    # Two history rows: the handover, then the close it triggers. Keeping them
+    # separate means the trail shows why the requisition closed.
+    _record_history(
+        sp_id, requisition_id,
+        config.STATUS_RECEIVED, config.STATUS_CONFIRMED,
+        note or f"Handed over by {actor['full_name']}",
+    )
+    _record_history(
+        sp_id, requisition_id,
+        config.STATUS_CONFIRMED, config.STATUS_CLOSED,
+        "Closed on handover",
+    )
 
-    notifications.send_receipt_confirmed(
-        requisition_id,
-        requisition.get("RequestorName", ""),
-        _fulfiller_upn(requisition.get("RequestorEmpNo", ""), roles),
+    notifications.send_handover_complete(
+        requisition_id, note,
+        requisition.get("RequestorUPN", ""),
         _copy_list(requisition.get("ManagerUPN")),
     )
 

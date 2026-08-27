@@ -240,8 +240,10 @@ def test_fulfillment_permissions(people):
           workflow.allowed_actions(ordered, people["vijay"]), [])
 
     received = requisition(700, status=config.STATUS_RECEIVED)
-    check("The requestor confirms receipt",
-          workflow.allowed_actions(received, people["vijay"]), ["ConfirmReceipt"])
+    check("Purchasing closes it on handover",
+          workflow.allowed_actions(received, people["jennie"]), ["ConfirmHandover"])
+    check("The requestor is not asked to confirm",
+          workflow.allowed_actions(received, people["vijay"]), [])
 
     closed = requisition(700, status=config.STATUS_CLOSED)
     check("A closed request can be copied to a new one",
