@@ -32,6 +32,13 @@ jobs:
                const coredemo = require('@actions/core')
                return await coredemo.getIDToken()
            result-encoding: string
+      # Keep the internal home page out of this public app. The deploy below
+      # uploads the whole repository (app_location "/") and this Static Web App
+      # has no sign-in in front of it. it-site/ is deployed separately by
+      # .github/workflows/it-site.yml. DO NOT REMOVE THIS STEP.
+      - name: Keep the internal home page out of the public app
+        run: rm -rf it-site
+
       - name: Build And Deploy
         id: builddeploy
         uses: Azure/static-web-apps-deploy@v1

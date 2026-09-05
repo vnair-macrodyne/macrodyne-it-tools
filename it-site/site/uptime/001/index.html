@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Uptime Issue 001</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+  :root {
+    --ground:   #EEF0EE;
+    --plate:    #FFFFFF;
+    --plate-2:  #E3E7E3;
+    --ink:      #16191A;
+    --ink-2:    #4E5A5C;
+    --rule:     #C7CEC9;
+    --rule-2:   #A9B2AD;
+    --accent:   #14494E;
+    --on-accent:#F4F7F5;
+    --value:    #8A5210;
+    --tk:       #9A5B14;
+    --tk-bg:    #F7EFE2;
+
+    --font-display: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+    --font-body: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+    --measure: 66ch;
+    --pad: clamp(1.25rem, 4vw, 2.5rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:   #121514;
+      --plate:    #1A1E1E;
+      --plate-2:  #232827;
+      --ink:      #E6E9E7;
+      --ink-2:    #9DA8A4;
+      --rule:     #333A39;
+      --rule-2:   #47504E;
+      --accent:   #63B6BB;
+      --on-accent:#0E1414;
+      --value:    #D9A45E;
+      --tk:       #D9A45E;
+      --tk-bg:    #2A2318;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:   #121514;
+    --plate:    #1A1E1E;
+    --plate-2:  #232827;
+    --ink:      #E6E9E7;
+    --ink-2:    #9DA8A4;
+    --rule:     #333A39;
+    --rule-2:   #47504E;
+    --accent:   #63B6BB;
+    --on-accent:#0E1414;
+    --value:    #D9A45E;
+    --tk:       #D9A45E;
+    --tk-bg:    #2A2318;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 17px;
+    line-height: 1.62;
+    margin: 0;
+    padding: clamp(0.75rem, 3vw, 2.5rem) clamp(0.5rem, 3vw, 2rem) 4rem;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .sheet {
+    max-width: 820px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(1rem, 2.5vw, 1.5rem);
+  }
+
+  /* ── Masthead plate ───────────────────────────────── */
+  .masthead {
+    background: var(--accent);
+    color: var(--on-accent);
+    padding: clamp(1.5rem, 5vw, 2.5rem) var(--pad) clamp(1.25rem, 4vw, 2rem);
+    border: 1px solid var(--accent);
+  }
+
+  .masthead-title {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: clamp(2.75rem, 11vw, 5rem);
+    line-height: 0.92;
+    letter-spacing: 0.06em;
+    margin: 0;
+    text-transform: uppercase;
+  }
+
+  .masthead-sub {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin: 0.85rem 0 0;
+    opacity: 0.86;
+  }
+
+  .masthead-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+    margin-top: 1.4rem;
+    padding-top: 1rem;
+    border-top: 1px solid color-mix(in srgb, var(--on-accent) 30%, transparent);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* ── Generic plate ────────────────────────────────── */
+  .plate {
+    background: var(--plate);
+    border: 1px solid var(--rule);
+  }
+
+  .plate-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 0.7rem var(--pad);
+    border-bottom: 1px solid var(--rule);
+    background: var(--plate-2);
+  }
+
+  .plate-label {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 0.7rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink);
+    margin: 0;
+  }
+
+  .plate-note {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+
+  .plate-body {
+    padding: clamp(1.1rem, 3.5vw, 1.9rem) var(--pad);
+  }
+
+  .plate-body > * { max-width: var(--measure); }
+  .plate-body > :first-child { margin-top: 0; }
+  .plate-body > :last-child { margin-bottom: 0; }
+
+  p { margin: 0 0 1.05em; }
+
+  /* ── Intro ────────────────────────────────────────── */
+  .intro p:first-child { font-size: 1.1rem; }
+
+  .sign {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    color: var(--ink-2);
+    margin-top: 1.4rem;
+  }
+
+  /* ── Readout grid ─────────────────────────────────── */
+  .readout {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border-top: 1px solid var(--rule);
+  }
+
+  .cell {
+    background: var(--plate);
+    padding: 1.1rem var(--pad);
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .cell-value {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: 1.85rem;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
+
+  .cell-value.is-money { color: var(--value); }
+
+  .cell-label {
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    line-height: 1.35;
+  }
+
+  .cell.is-tk { background: var(--tk-bg); }
+  .cell.is-tk .cell-value { color: var(--tk); font-size: 1.15rem; padding-top: 0.5rem; }
+
+  /* ── Feature typography ───────────────────────────── */
+  h2.feature-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(1.45rem, 4vw, 1.9rem);
+    line-height: 1.18;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    margin: 0 0 1rem;
+  }
+
+  h3.sub {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.02rem;
+    letter-spacing: 0.01em;
+    margin: 1.9rem 0 0.6rem;
+  }
+
+  .lede {
+    font-size: 1.09rem;
+    color: var(--ink);
+  }
+
+  strong { font-weight: 600; }
+
+  .spec {
+    border-left: 3px solid var(--accent);
+    padding: 0.15rem 0 0.15rem 1.1rem;
+    margin: 1.5rem 0;
+    font-family: var(--font-mono);
+    font-size: 0.87rem;
+    line-height: 1.7;
+    color: var(--ink-2);
+  }
+
+  .spec b {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  /* ── Shipped list ─────────────────────────────────── */
+  ul.shipped {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    max-width: var(--measure);
+  }
+
+  ul.shipped li {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.85rem;
+    align-items: baseline;
+  }
+
+  .tag {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid var(--rule-2);
+    padding: 0.2rem 0.45rem;
+    white-space: nowrap;
+    line-height: 1;
+  }
+
+  /* ── TK placeholder ───────────────────────────────── */
+  .tk-block {
+    background: var(--tk-bg);
+    border: 1px dashed var(--tk);
+    padding: 1rem 1.15rem;
+    margin: 1.3rem 0;
+    max-width: var(--measure);
+  }
+
+  .tk-block p { margin-bottom: 0.6rem; }
+  .tk-block p:last-child { margin-bottom: 0; }
+
+  .tk-tag {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--tk);
+    margin-bottom: 0.55rem;
+  }
+
+  .tk-block, .tk-block p { font-size: 0.93rem; color: var(--ink-2); }
+  .tk-block b { color: var(--ink); font-weight: 600; }
+
+  em.inline-tk {
+    font-style: normal;
+    font-family: var(--font-mono);
+    font-size: 0.82em;
+    color: var(--tk);
+    border-bottom: 1px dashed var(--tk);
+  }
+
+  /* ── Rotation strip ───────────────────────────────── */
+  .rotation {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border-top: 1px solid var(--rule);
+  }
+
+  .rot {
+    background: var(--plate);
+    padding: 0.85rem var(--pad);
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .rot-name {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--ink);
+  }
+
+  .rot-when {
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+
+  .rot.is-now { background: var(--accent); }
+  .rot.is-now .rot-name { color: var(--on-accent); }
+  .rot.is-now .rot-when { color: color-mix(in srgb, var(--on-accent) 78%, transparent); }
+
+  /* ── Help footer ──────────────────────────────────── */
+  dl.help {
+    margin: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.9rem;
+    max-width: var(--measure);
+  }
+
+  dl.help div {
+    display: grid;
+    grid-template-columns: minmax(0, 11rem) minmax(0, 1fr);
+    gap: 0.2rem 1rem;
+    align-items: baseline;
+  }
+
+  dl.help dt {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+
+  dl.help dd { margin: 0; font-size: 0.98rem; }
+
+  @media (max-width: 540px) {
+    dl.help div { grid-template-columns: minmax(0, 1fr); }
+  }
+
+  .colophon {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    text-align: center;
+    padding-top: 0.5rem;
+  }
+
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <header class="masthead">
+    <h1 class="masthead-title">Uptime</h1>
+    <p class="masthead-sub">What the IT department has been doing</p>
+    <div class="masthead-meta">
+      <span>Issue 001</span>
+      <span>September 2026</span>
+      <span>Macrodyne Technologies</span>
+    </div>
+  </header>
+
+  <section class="plate intro">
+    <div class="plate-head">
+      <p class="plate-label">First issue</p>
+      <span class="plate-note">Monthly</span>
+    </div>
+    <div class="plate-body">
+      <p>Most of what IT does is invisible by design. When the network holds, the machines boot and the data stays where it should, nothing happens — and nothing happening is the product. This is a short monthly note on what we've been working on, what it cost or saved, and what's coming next.</p>
+      <p>It goes to everyone. Each issue covers one or two areas in depth and rotates through the rest, so over a year you'll see all of it. If something here affects your work and you want the detail behind it, ask me.</p>
+      <p class="sign">— Vijay Nair, VP of IT</p>
+    </div>
+  </section>
+
+  <section class="plate">
+    <div class="plate-head">
+      <p class="plate-label">By the numbers</p>
+      <span class="plate-note">FY26 to date</span>
+    </div>
+    <div class="readout">
+      <div class="cell">
+        <span class="cell-value">8</span>
+        <span class="cell-label">Computers dealt with so far</span>
+      </div>
+      <div class="cell">
+        <span class="cell-value">1</span>
+        <span class="cell-label">Fixed rather than replaced</span>
+      </div>
+      <div class="cell">
+        <span class="cell-value is-money">$12,900</span>
+        <span class="cell-label">Saved against standard vendor pricing</span>
+      </div>
+      <div class="cell is-tk">
+        <span class="cell-value">Add count</span>
+        <span class="cell-label">Machines inventoried</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="plate">
+    <div class="plate-head">
+      <p class="plate-label">Shipped</p>
+      <span class="plate-note">This period</span>
+    </div>
+    <div class="plate-body">
+      <ul class="shipped">
+        <li><span class="tag">Hardware</span><span>Seven failing computers replaced with refurbished machines; one other upgraded rather than replaced.</span></li>
+        <li><span class="tag">Website</span><span>Day-to-day site management transitioned from Tree Frog to in-house.</span></li>
+      </ul>
+      <div class="tk-block">
+        <span class="tk-tag">Check before sending</span>
+        <p>Everything above is confirmed delivered. <b>Add nothing that isn't in use by someone today</b> — the shipped list is where a newsletter earns or loses its credibility, and "in the repo" is not the same as "people can use it".</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="plate">
+    <div class="plate-head">
+      <p class="plate-label">Feature — Hardware</p>
+      <span class="plate-note">FY26 refresh</span>
+    </div>
+    <div class="plate-body">
+      <h2 class="feature-title">Eight computers, and what each one actually needed</h2>
+
+      <p class="lede">This year's refresh follows what management asked for: keep the fleet current without a capital spike. That starts with working out what's wrong, not with a purchase order.</p>
+
+      <p>Eight machines have been dealt with so far this year, and they didn't all need the same thing.</p>
+
+      <p><strong>Seven needed replacing.</strong> They were failing, or built so that nothing useful could be added to them — no amount of memory fixes a machine that's dying. Those seven were replaced with refurbished units specified to the same requirement, at <strong>$12,900 less</strong> than the equivalent machines would have cost through our usual supplier.</p>
+
+      <p><strong>One needed fixing, not replacing.</strong> A laptop in the Automation group, slow enough to be a daily irritation, but the problem was memory and storage rather than age. Memory and an SSD went in and it stayed in service — no new machine, no waiting on delivery, no old one to dispose of.</p>
+
+      <h3 class="sub">Refurbished doesn't mean second-hand</h3>
+
+      <p>The clearest case is a design workstation, and it's worth being precise about what refurbished meant here — because it wasn't a hand-me-down. Our supplier builds machines to a requirement, and has been doing that for a number of companies for over fifteen years. We told him what the work needed. The memory and the graphics card were fitted to match.</p>
+
+      <div class="spec">
+        Unit &nbsp;&nbsp;&nbsp;&nbsp;<b>Dell Precision</b> &nbsp;(a mobile workstation)<br>
+        Graphics <b>NVIDIA RTX A1000, 8 GB</b> &nbsp;(fitted to our specification)<br>
+        Memory &nbsp;&nbsp;<b>64 GB</b> &nbsp;(also fitted — the base configuration ships with 8 GB)<br>
+        CPU &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>Intel i7, 10th generation</b><br>
+        Storage &nbsp;<b>1 TB SSD</b><br>
+        Warranty <b>1 year</b> &nbsp;(from the supplier)<br>
+        Paid &nbsp;&nbsp;&nbsp;&nbsp;<b>$1,250</b> &nbsp;·&nbsp; Avoided: <b>$4,500</b>
+      </div>
+
+      <p>That distinction is the whole point. A new machine at this budget arrives with whatever the manufacturer chose to put in it at that price — a fraction of the memory, and whatever graphics came built into the processor. This one was <strong>specified</strong>. The chassis was chosen because it had the room, and the parts went in to suit the work it was going to do.</p>
+
+      <p>It carries a one-year warranty, which is the question everyone asks second and nobody asks first.</p>
+
+      <p>The designer ended up with a machine that holds a full assembly open and turns it without complaint, for $1,250.</p>
+
+      <h3 class="sub">And where we don't yet know</h3>
+
+      <p>The design team has a question we can't answer from a specification sheet: how much machine does a large assembly actually need? So Dell have lent us one — a high-powered workstation with 64 GB of memory and a 16 GB graphics card — for the mechanical design team to run for sixty days. No cost, no commitment.</p>
+
+      <p>It is a useful comparison because the refurbished machine above is a Dell too. Same memory, same maker; a bigger graphics card and a faster processor. Whatever difference the design team notice is that difference, and nothing else.</p>
+
+      <p>We've agreed in advance what a good result looks like: files up to 100 MB opening within a couple of minutes, models that move without lag, quick local saves — and all of it while ETO, Teams, Kronos, Outlook and a browser full of tabs are running, because that's the real state of anyone's machine. We'll report what it found when the trial ends.</p>
+
+      <h3 class="sub">Where that leaves us</h3>
+
+      <p>Eight computers dealt with so far this year and <strong>$12,900</strong> that stayed in the budget, with the refresh still running. The approach is the same each time: work out what the job actually needs, then find the least expensive honest way to meet it. Sometimes that's a new machine. Often it's a refurbished one. Surprisingly often it's just more memory in the computer already on the desk — and sometimes it's borrowing one for sixty days before deciding anything at all.</p>
+
+      <p>If your computer is slow, log it. It may be a twenty-minute fix.</p>
+    </div>
+  </section>
+
+  <section class="plate">
+    <div class="plate-head">
+      <p class="plate-label">Feature — Systems</p>
+      <span class="plate-note">Live and available</span>
+    </div>
+    <div class="plate-body">
+      <h2 class="feature-title">Two things you can go and use today</h2>
+
+      <p class="lede">Both of these are online now. Neither needs anything installed.</p>
+
+      <h3 class="sub">Project Console</h3>
+
+      <p>Four dashboards and fifteen reports that build themselves from live project data — earning, cost performance, material run-out, inventory coverage, purchase order exceptions, non-conformance costs. The figures update on their own, so what you are looking at is what is true this morning rather than what someone exported last week.</p>
+
+      <p>The part worth knowing: <strong>the derived numbers are now calculated in one place, the same way for everyone.</strong> Margin, percentage complete, earned value and run-out used to be worked out in separate spreadsheets by different people. Purchasing, Quality, Project Management and Finance are now reading the same figures — which means a meeting can be about what to do rather than about whose number is right.</p>
+
+      <div class="spec">
+        Address &nbsp;<b><em class="inline-tk">add Project Console URL</em></b><br>
+        Sign in &nbsp;Your usual Microsoft account<br>
+        For &nbsp;&nbsp;&nbsp;&nbsp;<em class="inline-tk">confirm: project managers only during the trial, or open to all?</em>
+      </div>
+
+      <p>It is currently in trial with the project managers, who are putting real project data through it. If you spot something that looks wrong, that is exactly what the trial is for — tell us.</p>
+
+      <h3 class="sub">ETO on the web</h3>
+
+      <p>ETO now runs in a browser. Same system, same data, no software to install and nothing to keep up to date on your machine — useful if you have ever needed to check something from a different desk, a meeting room, or off site.</p>
+
+      <div class="spec">
+        Address &nbsp;<b><em class="inline-tk">add ETO Web URL</em></b><br>
+        Sign in &nbsp;<em class="inline-tk">confirm sign-in method</em><br>
+        For &nbsp;&nbsp;&nbsp;&nbsp;<em class="inline-tk">confirm: existing ETO users, or wider?</em>
+      </div>
+
+      <p>The next version, 6.3, is being tested alongside it. Nothing changes for you until that is proven.</p>
+
+      <p><strong>If a link doesn't let you in</strong> and you think it should, tell us rather than assuming it isn't for you. Access is being tidied up at the moment and the occasional person will be missed.</p>
+    </div>
+  </section>
+
+  <section class="plate">
+    <div class="plate-head">
+      <p class="plate-label">New — Website management</p>
+      <span class="plate-note">Now in-house</span>
+    </div>
+    <div class="plate-body">
+      <h2 class="feature-title">The website is now ours to run</h2>
+
+      <p>Tree Frog built macrodynepress.com and the site stays as they built it. What's changed is who keeps it running: the work the agency used to do is now done in-house. The defence section of the site remains with Tree Frog.</p>
+
+      <p><strong>Aditya Kumar is the prime on this effort, under my supervision</strong> — keeping the site healthy, and building the tools the Business Development team use to create their own content. That second part is the more useful half. Rather than routing every page and update through an agency queue, the people who know what needs saying can publish it themselves.</p>
+
+      <p>Business Development own what goes on the site. We look after what it runs on.</p>
+
+      <div class="tk-block">
+        <span class="tk-tag">Before you send this</span>
+        <p>Tell Aditya his name is going out company-wide. And check this section reads right to <b>Business Development</b> — it describes their ownership of the content, so they should see it before the company does.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="plate">
+    <div class="plate-head">
+      <p class="plate-label">Security</p>
+      <span class="plate-note">Audit and access</span>
+    </div>
+    <div class="plate-body">
+      <h2 class="feature-title">Who needs access to what</h2>
+
+      <p>An independent security review of the company's computers was carried out earlier this year. It found things worth fixing, as these reviews generally do, and those findings are being worked through in order of priority.</p>
+
+      <p>Two of them are already closed, and you will have noticed one of them. <strong>Everyone was required to change their domain password</strong> — that was this. It closed off passwords that were weak, or that had been used in more than one place. The second is quieter: <strong>company computers now run monitored security software</strong>, which watches for the behaviour of an attack rather than only blocking threats it already recognises, and escalates anything suspicious to people who investigate it.</p>
+
+      <p>The largest piece of that work isn't a piece of software — it's a question. <strong>Who actually needs access to what?</strong> Over time, and in every company, access accumulates: people change roles and keep what they had, folders get opened up to solve a deadline and never get closed again, and eventually a great many people can reach a great many things they have no need for.</p>
+
+      <p>We're working through that now with our IT partner, defining access by role rather than by history — what a buyer needs, what a designer needs, what someone in Quality needs. Point fixes close individual gaps. Defining roles stops them reopening.</p>
+
+      <p><strong>What this means for you:</strong> at some point over the coming months, some people will find their access to certain folders or systems has changed. That will be deliberate, not a fault. If something you genuinely need for your work stops being available, tell us and we'll put it back — the goal is accurate access, not less of it.</p>
+    </div>
+  </section>
+
+  <section class="plate">
+    <div class="plate-head">
+      <p class="plate-label">Coming next</p>
+      <span class="plate-note">Next 30 days</span>
+    </div>
+    <div class="plate-body">
+      <ul class="shipped">
+        <li><span class="tag">Support</span><span>A proper record of support requests, so the time things actually take stops being a matter of opinion.</span></li>
+        <li><span class="tag">Support</span><span>One published route for each kind of request — a broken machine, new equipment, software access, a suspicious email.</span></li>
+        <li><span class="tag">Systems</span><span>Invoicing information now moves from ETO into QuickBooks on its own — nobody re-types it.</span></li>
+        <li><span class="tag">Systems</span><span>Hours worked now land against the right job automatically.</span></li>
+        <li><span class="tag">Systems</span><span>Labour and purchasing reports arrive daily and weekly without anyone running them.</span></li>
+        <li><span class="tag">Systems</span><span>Design files now managed in one place with version history, set up on every designer's machine.</span></li>
+        <li><span class="tag">Systems</span><span>Live project dashboards and reports — now in trial with the project managers.</span></li>
+        <li><span class="tag">Security</span><span>Independent security review of company computers completed; findings now being worked through.</span></li>
+        <li><span class="tag">Website</span><span>Tools and a walkthrough handed to Business Development, so they can publish to the site without waiting on anyone.</span></li>
+      </ul>
+      <div class="tk-block">
+        <span class="tk-tag">Check before sending</span>
+        <p>These three are the right kind of item — small, nearly done, and visible to the reader when they land. <b>Add nothing that isn't at least 80% complete.</b> This is the section people will hold you to, and an item that slips twice costs more credibility than it bought.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="plate">
+    <div class="plate-head">
+      <p class="plate-label">What's in each issue</p>
+      <span class="plate-note">Six areas, rotating</span>
+    </div>
+    <div class="rotation">
+      <div class="rot is-now"><span class="rot-name">Hardware</span><span class="rot-when">This issue</span></div>
+      <div class="rot is-now"><span class="rot-name">Website</span><span class="rot-when">This issue</span></div>
+      <div class="rot"><span class="rot-name">Support</span><span class="rot-when">Upcoming</span></div>
+      <div class="rot"><span class="rot-name">Network</span><span class="rot-when">Upcoming</span></div>
+      <div class="rot"><span class="rot-name">Systems</span><span class="rot-when">Upcoming</span></div>
+      <div class="rot"><span class="rot-name">Security</span><span class="rot-when">Upcoming</span></div>
+    </div>
+  </section>
+
+  <section class="plate">
+    <div class="plate-head">
+      <p class="plate-label">How to get help</p>
+      <span class="plate-note">Same footer every issue</span>
+    </div>
+    <div class="plate-body">
+      <dl class="help">
+        <div>
+          <dt>Something's broken</dt>
+          <dd><em class="inline-tk">helpdesk address or extension</em></dd>
+        </div>
+        <div>
+          <dt>New computer or equipment</dt>
+          <dd><em class="inline-tk">request route</em></dd>
+        </div>
+        <div>
+          <dt>Software or access request</dt>
+          <dd><em class="inline-tk">request route</em></dd>
+        </div>
+        <div>
+          <dt>Website content</dt>
+          <dd>Business Development — they own what's on the site</dd>
+        </div>
+        <div>
+          <dt>Suspicious email</dt>
+          <dd>Don't click it. Report it — <em class="inline-tk">reporting route</em></dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <p class="colophon">Uptime · Macrodyne Technologies IT · Issue 001 · Draft</p>
+
+</div>
+</body>
+</html>

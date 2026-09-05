@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json.schemastore.org/staticwebapp.config.json",
+
+  "trailingSlash": "auto",
+
+  "auth": {
+    "identityProviders": {
+      "azureActiveDirectory": {
+        "registration": {
+          "openIdIssuer": "https://login.microsoftonline.com/4c9a50a1-c27f-4044-8025-b59b5b804d16/v2.0",
+          "clientIdSettingName": "AAD_CLIENT_ID",
+          "clientSecretSettingName": "AAD_CLIENT_SECRET"
+        }
+      }
+    }
+  },
+
+  "routes": [
+    {
+      "route": "/.auth/login/github",
+      "statusCode": 404
+    },
+    {
+      "route": "/internal/*",
+      "allowedRoles": ["it"]
+    },
+    {
+      "route": "/api/bulletin",
+      "allowedRoles": ["authenticated"]
+    },
+    {
+      "route": "/*",
+      "allowedRoles": ["authenticated"]
+    }
+  ],
+
+  "responseOverrides": {
+    "401": {
+      "statusCode": 302,
+      "redirect": "/.auth/login/aad"
+    },
+    "403": {
+      "rewrite": "/no-access.html"
+    },
+    "404": {
+      "rewrite": "/index.html"
+    }
+  },
+
+  "globalHeaders": {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "same-origin",
+    "Cache-Control": "no-cache",
+    "Content-Security-Policy": "frame-ancestors 'self' https://macrodyne.sharepoint.com https://*.sharepoint.com https://teams.microsoft.com"
+  },
+
+  "mimeTypes": {
+    ".json": "application/json",
+    ".html": "text/html"
+  }
+}

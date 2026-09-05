@@ -1,0 +1,8 @@
+{
+  "name": "macrodyne-it-site-api",
+  "version": "1.0.0",
+  "description": "Reads the SharePoint Bulletin list for the IT site",
+  "main": "bulletin/index.js",
+  "engines": { "node": ">=18" },
+  "dependencies": {}
+}

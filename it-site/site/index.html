@@ -1,0 +1,1209 @@
+<title>Macrodyne Inside</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+  :root {
+    --ground:    #EDF0EF;
+    --plate:     #FFFFFF;
+    --plate-2:   #E1E6E4;
+    --ink:       #16191A;
+    --ink-2:     #4E5A5C;
+    --ink-3:     #6E7A7C;
+    --rule:      #C6CDC9;
+    --rule-2:    #A7B0AC;
+
+    --accent:    #14494E;
+    --on-accent: #F4F7F5;
+
+    --live:      #9E3524;
+    --live-bg:   #F6E7E3;
+    --planned:   #47607A;
+    --planned-bg:#E4EAF0;
+    --notice:    #14494E;
+    --notice-bg: #E0E9E9;
+    --resolved:  #2F6B4F;
+    --resolved-bg:#E4EFE8;
+
+    --tk:        #9A5B14;
+    --tk-bg:     #F7EFE2;
+
+    --font-display: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+    --font-body: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+    --pad: clamp(1rem, 3.5vw, 2rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:    #111413;
+      --plate:     #191D1D;
+      --plate-2:   #222726;
+      --ink:       #E6E9E7;
+      --ink-2:     #9CA7A3;
+      --ink-3:     #7C8784;
+      --rule:      #323938;
+      --rule-2:    #465050;
+
+      --accent:    #63B6BB;
+      --on-accent: #0E1414;
+
+      --live:      #E0836E;
+      --live-bg:   #2C1B16;
+      --planned:   #8FAAC6;
+      --planned-bg:#1A2129;
+      --notice:    #63B6BB;
+      --notice-bg: #142020;
+      --resolved:  #6FC098;
+      --resolved-bg:#152418;
+
+      --tk:        #D9A45E;
+      --tk-bg:     #2A2318;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:    #111413;
+    --plate:     #191D1D;
+    --plate-2:   #222726;
+    --ink:       #E6E9E7;
+    --ink-2:     #9CA7A3;
+    --ink-3:     #7C8784;
+    --rule:      #323938;
+    --rule-2:    #465050;
+
+    --accent:    #63B6BB;
+    --on-accent: #0E1414;
+
+    --live:      #E0836E;
+    --live-bg:   #2C1B16;
+    --planned:   #8FAAC6;
+    --planned-bg:#1A2129;
+    --notice:    #63B6BB;
+    --notice-bg: #142020;
+    --resolved:  #6FC098;
+    --resolved-bg:#152418;
+
+    --tk:        #D9A45E;
+    --tk-bg:     #2A2318;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.55;
+    margin: 0;
+    padding: clamp(0.75rem, 3vw, 2.5rem) clamp(0.5rem, 3vw, 2rem) 5rem;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .sheet {
+    max-width: 800px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(0.85rem, 2vw, 1.25rem);
+  }
+
+  /* ── Masthead ─────────────────────────────────────── */
+  .masthead {
+    background: var(--accent);
+    color: var(--on-accent);
+    border: 1px solid var(--accent);
+    padding: clamp(1.2rem, 4vw, 1.9rem) var(--pad);
+  }
+
+  .masthead h1 {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: clamp(1.8rem, 6.5vw, 2.9rem);
+    line-height: 0.98;
+    letter-spacing: 0.045em;
+    text-transform: uppercase;
+    margin: 0;
+  }
+
+  .masthead h1 .light { font-weight: 500; opacity: 0.72; }
+
+  .mast-foot {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 1.1rem;
+    justify-content: space-between;
+    align-items: baseline;
+    margin: 0.75rem 0 0;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    opacity: 0.85;
+  }
+
+  .mast-foot p { margin: 0; }
+
+  /* ── Quick links ──────────────────────────────────── */
+  .links {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+  }
+
+  a.link {
+    background: var(--plate);
+    padding: 0.85rem var(--pad);
+    text-decoration: none;
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-height: 100%;
+  }
+
+  a.link:hover  { background: var(--plate-2); }
+  a.link:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+  a.link .name {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 0.95rem;
+    line-height: 1.25;
+  }
+
+  a.link .what {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    color: var(--ink-3);
+    line-height: 1.45;
+  }
+
+  /* Address not set yet. Amber, so an unfinished link is obvious at a glance. */
+  a.link.needs-url .name { color: var(--tk); border-bottom: 1px dashed var(--tk); align-self: flex-start; }
+
+  /* ── Status bar ───────────────────────────────────── */
+  .status {
+    border: 1px solid var(--rule);
+    background: var(--plate);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .status-main {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem var(--pad);
+  }
+
+  .dot {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    flex: none;
+  }
+
+  .status-main .headline {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(1.05rem, 3vw, 1.3rem);
+    letter-spacing: 0.005em;
+  }
+
+  .status.is-clear { background: var(--resolved-bg); border-color: var(--resolved); }
+  .status.is-clear .dot { background: var(--resolved); }
+  .status.is-clear .headline { color: var(--resolved); }
+
+  .status.is-live { background: var(--live-bg); border-color: var(--live); }
+  .status.is-live .dot {
+    background: var(--live);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 55%, transparent);
+    animation: ping 2.2s ease-out infinite;
+  }
+  .status.is-live .headline { color: var(--live); }
+
+  @keyframes ping {
+    0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 55%, transparent); }
+    70%  { box-shadow: 0 0 0 9px color-mix(in srgb, var(--live) 0%, transparent); }
+    100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 0%, transparent); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .status.is-live .dot { animation: none; }
+  }
+
+  .status-next {
+    border-top: 1px solid var(--rule);
+    padding: 0.6rem var(--pad);
+    font-family: var(--font-mono);
+    font-size: 0.71rem;
+    letter-spacing: 0.06em;
+    color: var(--ink-2);
+    background: var(--plate);
+  }
+
+  .status-next b { color: var(--ink); font-weight: 600; }
+
+  /* ── Filters ──────────────────────────────────────── */
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+    background: var(--plate);
+    border: 1px solid var(--rule);
+    padding: 0.65rem var(--pad);
+  }
+
+  .controls .lbl {
+    font-family: var(--font-mono);
+    font-size: 0.63rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    margin-right: 0.35rem;
+  }
+
+  button.filter {
+    font-family: var(--font-mono);
+    font-size: 0.67rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.34rem 0.68rem;
+    border: 1px solid var(--rule-2);
+    background: transparent;
+    color: var(--ink);
+    cursor: pointer;
+    line-height: 1.3;
+  }
+
+  button.filter[aria-pressed="true"] {
+    background: var(--accent);
+    color: var(--on-accent);
+    border-color: var(--accent);
+  }
+
+  button.filter:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ── Log ──────────────────────────────────────────── */
+  .log {
+    background: var(--plate);
+    border: 1px solid var(--rule);
+  }
+
+  .log-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 0.7rem var(--pad);
+    border-bottom: 1px solid var(--rule);
+    background: var(--plate-2);
+  }
+
+  .log-head h2 {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 0.68rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin: 0;
+  }
+
+  .log-head .meta {
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+
+  .entry {
+    display: grid;
+    grid-template-columns: 4px 8.6rem minmax(0, 1fr);
+    gap: 0 1.1rem;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .entry:last-child { border-bottom: none; }
+  .entry[hidden] { display: none; }
+
+  .stripe { background: var(--rule-2); }
+  .entry.s-live     .stripe { background: var(--live); }
+  .entry.s-planned  .stripe { background: var(--planned); }
+  .entry.s-notice   .stripe { background: var(--notice); }
+  .entry.s-resolved .stripe { background: var(--resolved); }
+
+  .when {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    line-height: 1.5;
+    color: var(--ink-2);
+    padding: 1.05rem 0 1.15rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .when .d { display: block; color: var(--ink); font-weight: 500; }
+  .when .t { display: block; }
+
+  .body { padding: 1.05rem var(--pad) 1.15rem 0; }
+
+  .tagline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .chip {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.57rem;
+    font-weight: 600;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    padding: 0.22rem 0.45rem;
+    line-height: 1;
+  }
+
+  .s-live     .chip { background: var(--live-bg);     color: var(--live); }
+  .s-planned  .chip { background: var(--planned-bg);  color: var(--planned); }
+  .s-notice   .chip { background: var(--notice-bg);   color: var(--notice); }
+  .s-resolved .chip { background: var(--resolved-bg); color: var(--resolved); }
+
+  /* Who posted it. On a page the whole company writes to, this is not decoration. */
+  .from {
+    font-family: var(--font-mono);
+    font-size: 0.57rem;
+    font-weight: 600;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    line-height: 1;
+  }
+
+  .entry h3 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.02rem;
+    line-height: 1.3;
+    letter-spacing: 0.005em;
+    text-wrap: balance;
+    margin: 0 0 0.35rem;
+  }
+
+  .entry p { margin: 0 0 0.55rem; font-size: 0.94rem; }
+  .entry p:last-child { margin-bottom: 0; }
+
+  dl.fields {
+    margin: 0.6rem 0 0;
+    display: grid;
+    grid-template-columns: minmax(0, 6.7rem) minmax(0, 1fr);
+    gap: 0.3rem 0.9rem;
+    align-items: baseline;
+  }
+
+  dl.fields dt {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  dl.fields dd { margin: 0; font-size: 0.9rem; }
+
+  .duration {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.05em;
+    color: var(--resolved);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .entry.s-resolved h3 { color: var(--ink-2); }
+  .entry.s-resolved .body { opacity: 0.88; }
+
+  .more-wrap { padding: 0.85rem var(--pad); border-top: 1px solid var(--rule); }
+
+  button.more {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    padding: 0.4rem 0.8rem;
+    border: 1px solid var(--rule-2);
+    background: transparent;
+    color: var(--ink);
+    cursor: pointer;
+  }
+
+  button.more:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .empty {
+    padding: 1.6rem var(--pad);
+    font-size: 0.94rem;
+    color: var(--ink-2);
+  }
+
+  .stale {
+    margin: 0;
+    padding: 0.6rem var(--pad);
+    background: var(--tk-bg);
+    border-bottom: 1px solid var(--tk);
+    color: var(--tk);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.05em;
+    line-height: 1.5;
+  }
+
+  /* ── Tips ─────────────────────────────────────────── */
+  .tips { background: var(--plate); border: 1px solid var(--rule); }
+
+  .tips-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .tip {
+    background: var(--plate);
+    padding: 1rem var(--pad);
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .tip .app {
+    font-family: var(--font-mono);
+    font-size: 0.57rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  .tip h4 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 0.97rem;
+    line-height: 1.32;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  .tip p { margin: 0; font-size: 0.89rem; color: var(--ink-2); }
+
+  .tip .how {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    line-height: 1.5;
+    color: var(--ink-3);
+    margin-top: 0.15rem;
+  }
+
+  kbd {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    border: 1px solid var(--rule-2);
+    border-bottom-width: 2px;
+    padding: 0.08rem 0.3rem;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+
+  .tips-foot {
+    padding: 0.75rem var(--pad);
+    font-size: 0.89rem;
+    color: var(--ink-2);
+  }
+
+  .tips-foot b { color: var(--ink); font-weight: 600; }
+
+  /* ── Ticker ───────────────────────────────────────── */
+  /* Deliberately quiet. This is the slow-moving half of the page and must not
+     compete with the notices above it — the accent appears once, at the top. */
+  .ticker {
+    background: var(--plate);
+    color: var(--ink-2);
+    border: 1px solid var(--rule);
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    overflow: hidden;
+  }
+
+  /* Pinned, not scrolling — a link that moves is a link nobody catches. */
+  .ticker-link {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    padding: 0.6rem var(--pad);
+    color: var(--accent);
+    text-decoration: none;
+    border-left: 1px solid var(--rule);
+  }
+
+  .ticker-link span { border-bottom: 1px solid transparent; }
+  .ticker-link:hover span { border-bottom-color: currentColor; }
+  .ticker-link:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+  /* Remove this class once the address is set. */
+  .ticker-link.needs-url { color: var(--tk); }
+  .ticker-link.needs-url span { border-bottom: 1px dashed currentColor; }
+
+  .ticker-label {
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    padding: 0.6rem var(--pad);
+    color: var(--ink-3);
+    border-right: 1px solid var(--rule);
+  }
+
+  .ticker-view { overflow: hidden; }
+
+  .ticker-track {
+    display: flex;
+    width: max-content;
+    animation: slide 95s linear infinite;
+  }
+
+  .ticker:hover .ticker-track,
+  .ticker:focus-within .ticker-track { animation-play-state: paused; }
+
+  @keyframes slide {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+
+  .ticker-seq { display: flex; }
+
+  .tick {
+    display: flex;
+    align-items: baseline;
+    gap: 0.45rem;
+    padding: 0.6rem 0;
+    white-space: nowrap;
+    font-size: 0.84rem;
+  }
+
+  .tick .state {
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    font-weight: 600;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  .tick .sep {
+    padding: 0 1.25rem;
+    color: var(--rule-2);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ticker { grid-template-columns: minmax(0, 1fr); }
+    .ticker-label { border-right: none; border-bottom: 1px solid var(--rule); }
+    .ticker-link { border-left: none; border-top: 1px solid var(--rule); }
+    .ticker-view { overflow: visible; }
+    .ticker-track { animation: none; width: auto; flex-wrap: wrap; padding: 0 var(--pad) 0.75rem; }
+    .ticker-seq { flex-wrap: wrap; }
+    .ticker-seq + .ticker-seq { display: none; }
+    .tick { white-space: normal; padding: 0.4rem 0; }
+    .tick .sep { padding: 0 0.9rem; }
+  }
+
+  /* ── Editorial note ───────────────────────────────── */
+  .note {
+    background: var(--tk-bg);
+    border: 1px dashed var(--tk);
+    padding: 1rem 1.15rem;
+  }
+
+  .note .tag {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.61rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--tk);
+    margin-bottom: 0.5rem;
+  }
+
+  .note p { margin: 0 0 0.55rem; font-size: 0.92rem; color: var(--ink-2); }
+  .note p:last-child { margin-bottom: 0; }
+  .note b { color: var(--ink); font-weight: 600; }
+
+  /* ── Help strip ───────────────────────────────────── */
+  .help {
+    background: var(--plate);
+    border: 1px solid var(--rule);
+    padding: 0.9rem var(--pad);
+    font-size: 0.92rem;
+    color: var(--ink-2);
+  }
+
+  .help b { color: var(--ink); font-weight: 600; }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+    background: var(--plate-2);
+    padding: 0.05rem 0.28rem;
+    color: var(--ink);
+  }
+
+  em.tk {
+    font-style: normal;
+    font-family: var(--font-mono);
+    font-size: 0.82em;
+    color: var(--tk);
+    border-bottom: 1px dashed var(--tk);
+  }
+
+  .colophon {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    text-align: center;
+    padding-top: 0.3rem;
+  }
+
+  @media (max-width: 620px) {
+    .ticker { grid-template-columns: minmax(0, 1fr); }
+    .ticker-label { border-right: none; border-bottom: 1px solid var(--rule); }
+    .ticker-link { border-left: none; border-top: 1px solid var(--rule); }
+
+    .entry { grid-template-columns: 4px minmax(0, 1fr); gap: 0 0.9rem; }
+    .when { padding: 1rem 0 0; }
+    .when .d, .when .t { display: inline; }
+    .when .t::before { content: " · "; }
+    .body { padding: 0.5rem var(--pad) 1.1rem 0; }
+    dl.fields { grid-template-columns: minmax(0, 1fr); gap: 0.1rem; }
+    dl.fields dd { margin-bottom: 0.35rem; }
+  }
+</style>
+
+<div class="sheet">
+
+  <header class="masthead">
+    <h1>Macrodyne <span class="light">Inside</span></h1>
+    <div class="mast-foot">
+      <p>What’s happening today · both sites</p>
+      <p id="today"></p>
+    </div>
+  </header>
+
+  <nav class="links" id="links" aria-label="Everyday systems"></nav>
+
+  <section class="status" id="status"></section>
+
+  <div class="controls">
+    <span class="lbl">Show</span>
+    <button class="filter" data-filter="all" aria-pressed="true">Everything</button>
+    <button class="filter" data-filter="live" aria-pressed="false">Happening now</button>
+    <button class="filter" data-filter="planned" aria-pressed="false">Planned</button>
+    <button class="filter" data-filter="notice" aria-pressed="false">Notices</button>
+    <button class="filter" data-filter="resolved" aria-pressed="false">Fixed</button>
+  </div>
+
+  <section class="log">
+    <div class="log-head">
+      <h2>Noticeboard</h2>
+      <span class="meta" id="source">Newest first</span>
+    </div>
+    <p class="stale" id="stale" hidden></p>
+    <div id="entries"></div>
+    <div class="more-wrap" id="moreWrap" hidden>
+      <button class="more" id="moreBtn" type="button">Show earlier notices</button>
+    </div>
+  </section>
+
+  <section class="tips">
+    <div class="log-head">
+      <h2>Worth knowing</h2>
+      <span class="meta">A few new ones each month</span>
+    </div>
+    <div class="tips-grid" id="tips"></div>
+    <p class="tips-foot"><b>Found something useful?</b> Send it over and it goes up here with your name on it — <em class="tk">where to send tips</em>.</p>
+  </section>
+
+  <section class="ticker" role="region" aria-label="What IT is working on">
+    <span class="ticker-label">IT is working on</span>
+    <div class="ticker-view"><div class="ticker-track" id="ticker"></div></div>
+    <a class="ticker-link needs-url" href="#"><span>Uptime · Issue 001 →</span></a>
+  </section>
+
+  <div class="help">
+    <b>Something broken that isn’t listed here?</b> <em class="tk">helpdesk address or extension</em> — and if it is listed, we already know and you don’t need to report it.
+  </div>
+
+  <div class="note">
+    <span class="tag">Before this replaces everyone’s home page</span>
+    <p><b>The notices below are examples, to show the format.</b> Replace them with real ones first — a home page that opens on a stale example is worse than no home page.</p>
+    <p><b>Three addresses to fill:</b> the helpdesk route above, the Uptime link at the foot of the ticker, and every tile in the row at the top still showing amber. Each amber item is an address nobody has given me yet.</p>
+    <p><b>Who can post.</b> The noticeboard is one SharePoint list. Anyone given write access to that list can post, and their department shows against the notice — IT is the first poster, not the only one. Decide who those people are before the link goes out, because after it does, silence on the page reads as nothing happening rather than nobody posting.</p>
+    <p><b>What belongs here:</b> anything a person needs to know today — something is broken, something is being worked on tonight, a phishing email is going round, a shutdown date is confirmed, a system is back. Short. Two lines is a good length.</p>
+    <p><b>Four fields for anything that is down:</b> what is down, why, who it hits, and when it will be back. Write them even when the answer is “we don’t know yet” — an honest <em class="tk">no ETA, next update at 11:00</em> stops the phone ringing, and a blank does not.</p>
+    <p><b>What belongs in Uptime instead:</b> what was achieved, what it cost or saved, why it was done. The monthly issue is the story; this page is the wire.</p>
+    <p><b>The ticker is the slow half.</b> It carries what is in flight, coming next and recently landed — one short line each, no dates and no figures. It only works if it moves when the work moves: an item that says “in flight” for four months does more harm than leaving it off.</p>
+    <p><b>The discipline that makes it worth reading:</b> post the fix as well as the fault. A page that only ever announces problems trains people to dread it. Every “happening now” should end up as a “fixed”, with the time it took — that number is the case for IT, made without anyone having to argue it.</p>
+  </div>
+
+  <p class="colophon">Macrodyne Inside · Noticeboard, systems and tips · Draft</p>
+</div>
+
+<script>
+/* ────────────────────────────────────────────────────────────────────────
+   WHERE THE CONTENT COMES FROM
+
+   Live: four SharePoint lists — Bulletin, Tips, Workstreams and Links —
+   read through /api/bulletin. Add or edit a row from the SharePoint or
+   Teams app on your phone; this page picks it up on the next load. No
+   deploy, no code, no ticket.
+
+   Moving a ticker item from "now" to "done" is changing one dropdown.
+
+   If that call fails, the page falls back — first to the last copy it saw
+   in this browser, then to the entries written below. That matters because
+   the day this page matters most is the day M365 is having a bad one.
+
+   The entries below are the last-resort copy. Keep one or two useful ones
+   here; they are what a visitor sees if everything else is unreachable.
+   ──────────────────────────────────────────────────────────────────────── */
+
+const API = '/api/bulletin';
+const CACHE_KEY = 'bulletin-cache-v1';
+
+// The row at the top. href '' means the address is not set yet — the tile
+// renders amber and does nothing, rather than sending someone nowhere.
+const FALLBACK_LINKS = [
+  { name: 'Email',            what: 'Outlook on the web',      href: 'https://outlook.office.com' },
+  { name: 'Teams',            what: 'Chat, calls, channels',   href: 'https://teams.microsoft.com' },
+  { name: 'Files',            what: 'SharePoint and OneDrive', href: 'https://macrodyne.sharepoint.com' },
+  { name: 'ETO',              what: 'Jobs, hours, purchasing', href: '' },
+  { name: 'Project Console',  what: 'Project dashboards',      href: '' },
+  // Current Static Web App hostname. Change this if the app moves to a
+  // custom domain — a home page tile is the last place a dead link survives.
+  { name: 'Requisition form', what: 'Everyday purchases',      href: 'https://orange-bay-0e0de3210.7.azurestaticapps.net/requisition/' },
+  { name: 'Time and pay',     what: 'Hours and payslips',      href: '' },
+  { name: 'Get IT help',      what: 'Raise a request',         href: '' }
+];
+
+// Each entry carries its own fields, in the order they should read.
+// For anything down, the four that matter: What's down / Why / Who it hits / Back by.
+// 'from' is the department that posted it.
+const FALLBACK_ENTRIES = [
+  {
+    status: 'live',
+    from: 'IT',
+    date: 'Yesterday',
+    time: '14:20',
+    title: 'Outlook and email are down',
+    body: 'This is not us. Microsoft have a service problem affecting Outlook across their customers, and ours is one of many.',
+    fields: [
+      ['What’s down', 'Outlook — sending and receiving. Teams chat and files are unaffected.'],
+      ['Why', 'A Microsoft service failure. <em class="tk">add their advisory reference</em>'],
+      ['Who it hits', 'Everyone, both sites.'],
+      ['Back by', '<em class="tk">no estimate from Microsoft yet — next update 11:00</em>']
+    ]
+  },
+  {
+    status: 'planned',
+    from: 'IT',
+    date: 'Mon 8 Sep',
+    time: '18:00',
+    title: 'Connie’s internet moves up to 500 Mbps',
+    body: 'Bell are switching the line over after hours.',
+    fields: [
+      ['What’s down', 'The internet at Connie, briefly, during the changeover.'],
+      ['Why', 'Upgrading the line from 100 to 500 Mbps.'],
+      ['Who it hits', 'Everyone at Connie. Racco is unaffected.'],
+      ['Back by', 'Same evening. Save your work before 6pm — ETO, Teams and Outlook reconnect on their own.']
+    ]
+  },
+  {
+    status: 'notice',
+    from: 'IT',
+    date: 'Tue 2 Sep',
+    time: '',
+    title: 'A high-powered design workstation is in on trial',
+    body: 'On loan from Dell for sixty days, at no cost, so the design team can find out what a bigger machine actually buys on large assemblies.',
+    fields: [
+      ['Who it’s for', 'Mechanical Design.'],
+      ['What to do', 'Speak to Vijay if you want time on it.']
+    ]
+  },
+  {
+    status: 'resolved',
+    from: 'IT',
+    date: 'Fri 29 Aug',
+    time: '14:05',
+    title: 'ETO was unreachable for some people',
+    body: 'A session problem on the server, cleared by a restart.',
+    fields: [
+      ['Who it hit', 'Roughly a dozen users.'],
+      ['Outcome', '<span class="duration">Down 47 minutes · back at 14:52</span>']
+    ]
+  },
+  {
+    status: 'notice',
+    from: 'IT',
+    date: 'Thu 28 Aug',
+    time: '',
+    title: 'Everyone was asked to change their domain password',
+    body: 'This came out of the independent security review earlier in the year. It closes off passwords that were weak, or that had been used in more than one place.',
+    fields: [
+      ['Who it’s for', 'Everyone.'],
+      ['What to do', 'If you have not done yours, you will be prompted at your next sign-in.']
+    ]
+  },
+  {
+    status: 'notice',
+    from: 'IT',
+    date: 'Mon 25 Aug',
+    time: '',
+    title: 'Project Console is open to the project managers',
+    body: 'Four dashboards and fifteen reports that build themselves from live project data. In trial, so tell us anything that looks wrong — that is what the trial is for.',
+    fields: [
+      ['Who it’s for', 'Project managers.'],
+      ['What to do', 'Sign in with your usual Microsoft account.']
+    ]
+  },
+  {
+    status: 'resolved',
+    from: 'IT',
+    date: 'Wed 20 Aug',
+    time: '09:10',
+    title: 'Racco lost its internet during the upgrade',
+    body: 'Expected, and short. The site came back on the new 500 Mbps line.',
+    fields: [
+      ['Who it hit', 'Racco.'],
+      ['Outcome', '<span class="duration">Down 25 minutes · back at 09:35</span>']
+    ]
+  },
+  {
+    status: 'notice',
+    from: 'IT',
+    date: 'Mon 18 Aug',
+    time: '',
+    title: 'A phishing email is going round — “your mailbox is full”',
+    body: 'It asks you to sign in to release held messages. The sign-in page is convincing, and it is not ours.',
+    fields: [
+      ['Who it’s for', 'Everyone.'],
+      ['What to do', 'Do not click it. Forward it to IT, then delete it.']
+    ]
+  }
+];
+
+// The slow half: what IT is working on, in one line each.
+// now = being worked on · next = coming · done = landed and in use
+const FALLBACK_TICKER = [
+  ['now',  'Connie’s internet moving up to 500 Mbps'],
+  ['done', 'Racco now running on 500 Mbps'],
+  ['now',  'Design team trialling a high-powered workstation'],
+  ['done', 'Eight computers sorted so far this year'],
+  ['now',  'Defining who needs access to what, by role'],
+  ['done', 'ETO now runs in a browser'],
+  ['now',  'Testing the next version of ETO'],
+  ['done', 'Live project dashboards, in trial with the project managers'],
+  ['next', 'Two-step sign-in for everyone'],
+  ['now',  'Building a complete list of every company device'],
+  ['done', 'Invoicing moves from ETO into QuickBooks by itself'],
+  ['now',  'A simple form for everyday purchase requests'],
+  ['done', 'Design files in one place, with version history'],
+  ['next', 'Moving everyone to Windows 11'],
+  ['now',  'Keeping a proper record of support requests'],
+  ['done', 'Website now run in-house']
+];
+
+const FALLBACK_TIPS = [
+  {
+    app: 'Outlook',
+    title: 'Write it now, send it at eight',
+    body: 'If you work odd hours, scheduling the email keeps you from setting an expectation that everyone else does too.',
+    how: 'Click the arrow beside Send → Schedule send.'
+  },
+  {
+    app: 'Outlook',
+    title: 'Get system emails out of your inbox',
+    body: 'One rule files every ETO and system notification into its own folder, and your inbox goes back to being about people.',
+    how: 'Right-click the message → Rules → Always move messages from…'
+  },
+  {
+    app: 'Outlook',
+    title: 'Give yourself ten seconds to change your mind',
+    body: 'Recall almost never works once a message has left. Undo send does, because it has not left yet.',
+    how: 'Settings → Mail → Compose and reply → Undo send.'
+  },
+  {
+    app: 'Teams',
+    title: 'Mute without finding the window',
+    body: 'Works wherever you are on screen. Worth knowing before you take a call from the floor.',
+    how: '<kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd>'
+  },
+  {
+    app: 'Teams',
+    title: 'Put it in the channel, not the chat',
+    body: 'A channel post about a job is still findable in six months. A one-to-one chat about the same job is gone the moment somebody needs it. Same effort either way.',
+    how: ''
+  },
+  {
+    app: 'Both',
+    title: 'Type @ and their name to pull someone in',
+    body: 'It puts the message in front of them rather than hoping they read down. In an email it also adds them to the To line for you.',
+    how: ''
+  }
+];
+
+const LABEL = {
+  live: 'Happening now',
+  planned: 'Planned',
+  notice: 'Notice',
+  resolved: 'Fixed'
+};
+
+const INITIAL = 5;
+let expanded = false;
+let mode = 'all';
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+let ENTRIES = FALLBACK_ENTRIES;
+let TIPS    = FALLBACK_TIPS;
+let TICKER  = FALLBACK_TICKER;
+let LINKS   = FALLBACK_LINKS;
+
+function renderDate() {
+  const el = document.getElementById('today');
+  if (!el) return;
+  el.textContent = new Date().toLocaleDateString('en-CA',
+    { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+function renderLinks() {
+  const el = document.getElementById('links');
+  if (!el) return;
+  el.innerHTML = LINKS.map(l => {
+    const set = l.href && l.href !== '#';
+    return '<a class="link' + (set ? '' : ' needs-url') + '" ' +
+      (set ? 'href="' + esc(l.href) + '"' : 'href="#" aria-disabled="true"') + '>' +
+      '<span class="name">' + esc(l.name) + '</span>' +
+      '<span class="what">' + esc(set ? l.what : 'address not set') + '</span>' +
+    '</a>';
+  }).join('');
+}
+
+function renderStatus() {
+  const live = ENTRIES.filter(e => e.status === 'live');
+  const next = ENTRIES.find(e => e.status === 'planned');
+  const el = document.getElementById('status');
+
+  el.className = 'status ' + (live.length ? 'is-live' : 'is-clear');
+
+  const headline = live.length
+    ? (live.length === 1 ? 'One issue in progress' : live.length + ' issues in progress')
+    : 'Everything is running normally';
+
+  let html = '<div class="status-main"><span class="dot"></span>' +
+             '<span class="headline">' + headline + '</span></div>';
+
+  if (next) {
+    html += '<div class="status-next">Next planned work &nbsp;·&nbsp; <b>' +
+            esc(next.date) + (next.time ? ', ' + esc(next.time) : '') + '</b> &nbsp;·&nbsp; ' +
+            esc(next.title) + '</div>';
+  }
+
+  el.innerHTML = html;
+}
+
+function renderEntries() {
+  const wrap = document.getElementById('entries');
+  const pool = mode === 'all' ? ENTRIES : ENTRIES.filter(e => e.status === mode);
+
+  if (!pool.length) {
+    wrap.innerHTML = '<p class="empty">Nothing under this heading right now.</p>';
+    document.getElementById('moreWrap').hidden = true;
+    return;
+  }
+
+  const limit = (mode === 'all' && !expanded) ? INITIAL : pool.length;
+
+  wrap.innerHTML = pool.slice(0, limit).map(e => {
+    // Field values are authored in this file and may contain markup, so they
+    // are written through as-is. Anything typed by a person must be escaped.
+    const fields = (e.fields || [])
+      .map(([label, value]) => '<dt>' + esc(label) + '</dt><dd>' + value + '</dd>')
+      .join('');
+
+    return '<article class="entry s-' + e.status + '">' +
+      '<div class="stripe"></div>' +
+      '<div class="when"><span class="d">' + esc(e.date) + '</span>' +
+        (e.time ? '<span class="t">' + esc(e.time) + '</span>' : '') + '</div>' +
+      '<div class="body">' +
+        '<div class="tagline"><span class="chip">' + LABEL[e.status] + '</span>' +
+          (e.from ? '<span class="from">' + esc(e.from) + '</span>' : '') + '</div>' +
+        '<h3>' + esc(e.title) + '</h3>' +
+        '<p>' + esc(e.body) + '</p>' +
+        (fields ? '<dl class="fields">' + fields + '</dl>' : '') +
+      '</div>' +
+    '</article>';
+  }).join('');
+
+  const showMore = mode === 'all' && !expanded && pool.length > INITIAL;
+  document.getElementById('moreWrap').hidden = !showMore;
+}
+
+function renderTips() {
+  document.getElementById('tips').innerHTML = TIPS.map(t =>
+    '<div class="tip">' +
+      '<span class="app">' + esc(t.app) + '</span>' +
+      '<h4>' + esc(t.title) + '</h4>' +
+      '<p>' + esc(t.body) + '</p>' +
+      (t.how ? '<p class="how">' + t.how + '</p>' : '') +
+    '</div>'
+  ).join('');
+}
+
+const TICK_LABEL = { now: 'Now', next: 'Next', done: 'Done' };
+
+function renderTicker() {
+  const seq = '<div class="ticker-seq">' + TICKER.map(([state, text]) =>
+    '<span class="tick">' +
+      '<span class="state">' + (TICK_LABEL[state] || '') + '</span>' +
+      '<span>' + esc(text) + '</span>' +
+      '<span class="sep" aria-hidden="true">◆</span>' +
+    '</span>'
+  ).join('') + '</div>';
+
+  // Two copies so the loop closes on itself; the second is decorative.
+  document.getElementById('ticker').innerHTML =
+    seq + seq.replace('<div class="ticker-seq">', '<div class="ticker-seq" aria-hidden="true">');
+}
+
+function render() {
+  renderDate();
+  renderLinks();
+  renderStatus();
+  renderEntries();
+  renderTips();
+  renderTicker();
+}
+
+/* ── Loading, with two fallbacks ─────────────────────────────────────── */
+
+function readCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const c = JSON.parse(raw);
+    return (c && Array.isArray(c.entries) && c.entries.length) ? c : null;
+  } catch (err) { return null; }
+}
+
+function writeCache(data) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(Object.assign({ at: Date.now() }, data)));
+  } catch (err) { /* private window, storage off — not worth reporting */ }
+}
+
+function showSource(label, warning) {
+  const src = document.getElementById('source');
+  const stale = document.getElementById('stale');
+  if (src) src.textContent = label;
+  if (!stale) return;
+  if (warning) { stale.textContent = warning; stale.hidden = false; }
+  else { stale.hidden = true; }
+}
+
+function ago(ts) {
+  const mins = Math.round((Date.now() - ts) / 60000);
+  if (mins < 60) return mins + ' minutes ago';
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return hrs + (hrs === 1 ? ' hour ago' : ' hours ago');
+  const days = Math.round(hrs / 24);
+  return days + (days === 1 ? ' day ago' : ' days ago');
+}
+
+function adopt(src) {
+  if (Array.isArray(src.tips)   && src.tips.length)   TIPS   = src.tips;
+  if (Array.isArray(src.ticker) && src.ticker.length) TICKER = src.ticker;
+  if (Array.isArray(src.links)  && src.links.length)  LINKS  = src.links;
+}
+
+async function load() {
+  try {
+    const res = await fetch(API, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (!Array.isArray(data.entries) || !data.entries.length) throw new Error('empty');
+
+    ENTRIES = data.entries;
+    adopt(data);
+
+    writeCache({ entries: ENTRIES, tips: TIPS, ticker: TICKER, links: LINKS });
+    showSource('Newest first', null);
+  } catch (err) {
+    const cached = readCache();
+    if (cached) {
+      ENTRIES = cached.entries;
+      adopt(cached);
+      showSource('From this browser',
+        'Could not reach the noticeboard, so this is the last copy this browser saw — ' +
+        ago(cached.at) + '. Anything posted since is not shown.');
+    } else {
+      ENTRIES = FALLBACK_ENTRIES;
+      TIPS    = FALLBACK_TIPS;
+      TICKER  = FALLBACK_TICKER;
+      LINKS   = FALLBACK_LINKS;
+      showSource('Standby copy',
+        'Could not reach the noticeboard. This is the standby copy built into the page ' +
+        'and may be out of date. If something is wrong right now, call rather than rely on this.');
+    }
+  }
+  render();
+}
+
+document.addEventListener('click', e => {
+  const dead = e.target.closest('a.link.needs-url');
+  if (dead) { e.preventDefault(); return; }
+
+  const btn = e.target.closest('button.filter');
+  if (btn) {
+    mode = btn.dataset.filter;
+    document.querySelectorAll('button.filter').forEach(b =>
+      b.setAttribute('aria-pressed', String(b === btn)));
+    renderEntries();
+    return;
+  }
+
+  if (e.target.closest('#moreBtn')) {
+    expanded = true;
+    renderEntries();
+  }
+});
+
+render();   // draw immediately from the standby copy, then replace with live
+load();
+</script>
